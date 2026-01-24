@@ -1,0 +1,745 @@
+---
+title: "eval"
+author: ""
+date: "10 11 2020"
+output: html_document
+---
+
+
+```{r, echo=FALSE, message=FALSE}
+# packages
+library(ez)
+library(reshape2)
+library(reshape)
+library(ggplot2)
+library(pastecs)
+library(ez)
+library(data.table)
+library(tidyverse)
+
+library(dplyr)                                                  # Load dplyr package
+#library(plyr)                                                   # Load plyr package
+library(readr)                                                  # Load readr package
+```
+
+
+# Get and prepare raw data 
+
+```{r}
+library(readr)
+data <- read_csv("data.csv")
+```
+
+
+```{r, message = FALSE, echo = FALSE}
+data_excl <- subset(data,  data$desktop_conf != "1: I confirm" | data$attent_conf != "1: I confirm")
+data <- subset(data, data$desktop_conf == "1: I confirm" & data$attent_conf == "1: I confirm")
+
+```
+
+
+Exclude participants whose learning accuracy (coded in "learning_yellow_accuracy" and "learning_pink_accuracy") is less than 0.875 
+
+
+```{r}
+data_learning_exclusion <- data %>%
+  filter(learning_yellow_accuracy < 7/8 | learning_pink_accuracy < 7/8)
+
+
+data <- data %>%
+  filter(learning_yellow_accuracy >= 7/8 & learning_pink_accuracy >= 7/8)
+```
+
+```{r}
+total_N <- nrow(data) + nrow(data_learning_exclusion)
+# percentage excluded
+excl_percentage <- (nrow(data_learning_exclusion) / total_N) * 100
+excl_percentage
+```
+
+```{r}
+table(data$device_mechanism, data$contingency)
+table(data$condition)
+```
+# Demographics 
+
+```{r}
+# mean age of participants 
+mean(data$age, na.rm = TRUE)
+# age range of participants 
+range(data$age, na.rm = TRUE)
+```
+the one participant who indicated an age of 3 years wrote in the "tech_issues" field that they are actually 34 years old. So we will recode this participant's age to 34.
+
+```{r}
+data$age <- ifelse(data$age == 3, 34, data$age)
+```
+
+
+run the demographics code again
+
+```{r}
+# mean age of participants 
+mean(data$age, na.rm = TRUE)
+# age range of participants 
+range(data$age, na.rm = TRUE)
+# number of genders reported 
+table(data$gender)
+```
+
+
+# Data preparation 
+
+Make factors
+
+```{r}
+data$contingency <- factor(data$contingency, 
+                              levels = c("1_1", "05_05", "0_0"), 
+                              labels = c("P(e+|c+) 4/4 \nP(e+|c-) 4/4", "P(e+|c+) 2/4 \nP(e+|c-) 2/4", 
+                                         "P(e+|c+) 0/4 \nP(e+|c-) 0/4"))
+
+
+data$device_mechanism <- factor(data$device_mechanism, 
+                              levels = c("opaque", "transp"), 
+                              labels = c("opaque", "transparent"))
+```
+
+
+
+# Analysis
+
+
+## Plots 
+
+Make a data frame in long format for plotting prior and posterior structure ratings together
+
+```{r}
+# make a separate data frame in long format for plotting, with the DVs being "structure_rating_prior" and "strucutre_rating_posterior"
+data_long <- data %>%
+  pivot_longer(cols = c(structure_rating_prior, structure_rating_posterior),
+               names_to = "causal_rating_type",
+               values_to = "rating_value")
+
+# make rating_type a factor with levels in the desired order
+data_long$causal_rating_type <- factor(data_long$causal_rating_type, levels = c("structure_rating_prior", "structure_rating_posterior"),
+                                labels = c("Prior", "Posterior"))
+```
+
+
+
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(Hmisc)  # for mean_cl_boot
+
+
+
+device_mechanism_colors <- c(
+  # Dark2 Colors (Colors 1-8)
+  "opaque"      = "#1b9e77",  # Dark2 Green
+  "transparent"   = "#7570b3"  # Dark2 Purple
+)
+
+
+
+plotDV <- function(df, dv_col, x_jitter = 0.10, y_jitter = 5) {
+  
+  
+  ggplot(df, aes(x = causal_rating_type, y = .data[[dv_col]], fill = device_mechanism)) +
+    facet_grid(device_mechanism ~ contingency) +
+    scale_y_continuous(limits = c(-10, 110), breaks = seq(0, 100, by = 10)) +
+    
+    # Reference line at y = 50
+    geom_hline(yintercept = 50, color = "grey20", linewidth = 0.4, linetype = "dashed") +
+    
+    # Violin background (lighter, no outline)
+    geom_violin(
+      trim = TRUE, alpha = 0.25,
+      color = NA
+    ) +
+    
+    # Subject lines (jittered both horizontally & vertically)
+    geom_line(
+      aes(group = subj_code),
+      alpha = 0.1,
+      color = "grey50",
+      position = position_jitter(width = x_jitter, height = y_jitter)
+    ) +
+    
+    # Jittered points
+    geom_point(
+      alpha = 0.15,
+      size = 1.2,
+      color = "black",
+      position = position_jitter(width = x_jitter, height = y_jitter)
+    ) +
+    
+    # Bootstrapped mean ±95% CI ribbons (higher alpha)
+    stat_summary(
+      aes(group = device_mechanism, fill = device_mechanism),
+      fun.data = mean_cl_boot,
+      geom = "ribbon",
+      alpha = 0.55,
+      color = NA
+    ) +
+    
+    # Mean line (per device_mechanism)
+    stat_summary(
+      aes(color = device_mechanism, group = device_mechanism),
+      fun = mean,
+      geom = "line",
+      size = 1
+    ) +
+    
+    # Mean point with thin black border
+    stat_summary(
+      aes(fill = device_mechanism),
+      fun.data = mean_cl_boot,
+      geom = "pointrange",
+      shape = 21,
+      color = "black",
+      size = 0.9,
+      stroke = 0.6
+    ) +
+    
+    # Median point (white triangle)
+    stat_summary(
+      fun = median,
+      geom = "point",
+      shape = 24,
+      size = 2.5,
+      fill = "white",
+      color = "black"
+    ) +
+    
+    # Color scales
+    scale_fill_manual(values = device_mechanism_colors) +
+    scale_color_manual(values = device_mechanism_colors) +
+    
+    labs(
+      x = "Structure Rating",
+      y = "Rating Value"
+    ) +
+    
+    # APA-friendly theme (no gridlines)
+    theme_minimal(base_size = 14) +
+    theme(
+      legend.position = "none",
+      axis.text.x = element_text(angle = 25, hjust = 1),
+      axis.text.y = element_text(size = 10),
+      panel.spacing = unit(3, "lines"),
+      panel.grid = element_blank(),
+      strip.background = element_rect(fill = "white", color = "grey70", linewidth = 0.4),
+      strip.text = element_text(face = "bold", size = 12),
+      axis.title = element_text(face = "bold")
+    )
+}
+
+# ---- Run and Save ----
+p1 <- plotDV(data_long, "rating_value")
+p1
+
+ggsave("structure_rating_by_device_mechanism_APA_colored.svg", plot = p1, width = 8, height = 6)
+ggsave("structure_rating_by_device_mechanism_APA_colored.pdf", plot = p1, width = 8, height = 6)
+
+
+```
+
+## Statistical tests
+
+Test the difference between prior and posterior structure ratings depending on device_mechanism and contingency condition using a mixed ANOVA with contingency and device_mechanism as between-subject factors and rating_type (prior vs. posterior) as within-subject factor
+
+
+```{r}
+library(afex)
+library(emmeans)
+
+anova_data <- data_long
+
+a1 <- aov_car(rating_value ~ device_mechanism*causal_rating_type*contingency  + Error(subj_code/causal_rating_type), anova_data, anova_table = list(es = "pes")) # the anova model
+a1 
+```
+
+Repeat analysis as mixed effects model (same results in different format)
+
+```{r}
+library(lme4)
+library(lmerTest)  # gives p-values
+
+# drop the non-realized contingency levels 
+anova_data <- droplevels(anova_data)
+with(anova_data, table(device_mechanism, contingency))
+
+model <- lmer(
+  rating_value ~ device_mechanism * causal_rating_type * contingency +
+    (1 | subj_code),
+  data = anova_data
+)
+
+anova(model, type = 3)
+```
+
+List of the group means 
+
+```{r}
+# means
+group_means <- emmeans(a1, c("causal_rating_type", "contingency", "device_mechanism")) 
+group_means
+```
+
+compute a contrast with emmeans to test if the prior-posterior change is larger in the opaque device_mechanism condition compared to the transparent device_mechanism condition, across all contingency conditions
+
+```{r}
+# main effect of device_mechanism
+pairs(emmeans(a1, ~ device_mechanism), adjust = "none")
+
+# main effect of rating type
+pairs(emmeans(a1, ~ causal_rating_type), adjust = "none")
+
+
+#
+pairs(emmeans(a1, ~ device_mechanism*causal_rating_type), adjust = "none")
+
+
+# rating differences across device_mechanism conditions
+pairs(emmeans(a1, ~ causal_rating_type|device_mechanism), adjust = "none")
+
+# now test the difference in these deltas between the two device_mechanism conditions
+pairs(pairs(emmeans(a1, ~ causal_rating_type*device_mechanism), adjust = "none"), adjust = "none")
+
+```
+
+```{r}
+pairs(emmeans(a1, ~ causal_rating_type|contingency*device_mechanism), adjust = "none") -> deltas
+
+deltas
+```
+
+
+
+## Rating change categories
+
+Compute the different between prior and posterior for each participant and append it to data frame 
+
+```{r}
+data <- data %>%
+  mutate(rating_diff = structure_rating_posterior - structure_rating_prior)
+```
+
+Code for each participate what kind of rating difference occurred: no difference, increase, decrease. For the "no difference" type, allow for some noise of plus minus 5 points 
+
+```{r}
+data <- data %>%
+  mutate(rating_diff_type = case_when(
+    rating_diff > 0 ~ "increase",
+    rating_diff < 0 ~ "decrease",
+    TRUE ~ "same"
+  ))
+```
+
+
+Now make a plot that shows the proportions of these rating_diff_type for each device_mechanism and contingency condition; as error bars, show 95% Proportion CIs (using binom.confint from the binom package)
+
+```{r}
+library(binom)
+data_diff_type <- data %>%
+  group_by(device_mechanism, contingency, rating_diff_type) %>%
+  summarise(
+    count = n()
+  ) %>%
+  group_by(device_mechanism, contingency) %>%
+  mutate(
+    total = sum(count),
+    proportion = count / total
+  ) %>%
+  ungroup()
+# compute 95% CIs for proportions
+data_diff_type <- data_diff_type %>%
+  rowwise() %>%
+  mutate(
+    ci = list(binom.confint(count, total, method = "wilson"))
+  ) %>%
+  unnest_wider(ci) %>%
+  select(-c(method, mean, x))
+
+
+ggplot(data_diff_type, aes(x = contingency, y = proportion, fill = rating_diff_type)) +
+  facet_wrap(~ device_mechanism) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), width = 0.7) +
+  geom_errorbar(aes(ymin = lower, ymax = upper), 
+                position = position_dodge(width = 0.9), width = 0.2) +
+  scale_fill_manual(values = c("increase" = "#1b9e77", "same" = "#d95f02", "decrease" = "#7570b3")) +
+  labs(
+    title = "Proportion of Rating Change Types",
+    x = "Contingency",
+    y = "Proportion", 
+    fill = "change type"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "top",
+    axis.text.x = element_text(angle = 25, hjust = 1)
+  )+ # define y axis limits so that they go from 0 to 1 in steps of 0.25
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, by = 0.25))-> p3
+p3
+# save plot 
+ggsave("subgroups.svg", plot = p3, width = 14, height = 6)
+ggsave("subgroups.pdf", plot = p3, width = 14, height = 6)
+```
+
+Determine the proportion of participants in the "transparent" condition who fell into the "same" cluster and a "rating_diff" of 0
+```{r}
+data %>%
+  filter(device_mechanism == "transparent" & rating_diff_type == "same") %>%
+  summarise(
+    count = n()
+  ) -> transparent_same_count
+
+data %>%
+  filter(device_mechanism == "transparent" & rating_diff_type == "same" & structure_rating_prior == 0) %>%
+  summarise(
+    count = n()
+  ) -> transparent_same_count_zero_prior
+
+
+transparent_same_count_zero_prior/transparent_same_count
+```
+
+In the transparent conditions, of the participants who gave identical prior and posterior ratings, 82% had a prior rating of 0.
+
+
+
+# Generate Bayesian model predictions 
+
+```{r}
+# number of simulations 
+
+m = 100000
+```
+
+
+## SI model 
+
+```{r}
+# --- Load function file ---
+source("SI_model_fun.R")
+
+# --- Set up contingency tables ---
+data <- matrix(data = 0, nrow = 5, ncol = 4)
+#             D  C  B  A              
+data[1,] <- c(0, 4, 0, 4) # 1.0 1.0
+data[2,] <- c(1, 3, 1, 3) # 0.75 0.75
+data[3,] <- c(2, 2, 2, 2) # 0.5 0.5
+data[4,] <- c(3, 1, 3, 1) # 0.25 0.25
+data[5,] <- c(4, 0, 4, 0) # 0.0 0.0
+
+# --- Sweep over priors ---
+prior_grid <- seq(0, 1, by = 0.1)
+
+# Store all results in a list
+all_preds <- list()
+
+for (p0 in prior_grid) {
+  p1 <- 1 - p0
+  message("Running model with prior_S0 = ", p0, ", prior_S1 = ", p1)
+  
+  preds <- generate_SI_preds(
+    data = data,
+    m = m,
+    prior_S0 = p0,
+    prior_S1 = p1
+  )
+  
+  # Add prior info as columns for later identification
+  preds$prior_S0 <- p0
+  preds$prior_S1 <- p1
+  
+  # Store results
+  all_preds[[as.character(p0)]] <- preds
+}
+
+# Combine all into one big data frame
+library(dplyr)
+pred_SI_all <- bind_rows(all_preds, .id = "prior_S0_label")
+
+# make a subset containing columns 2:5, S0_pp, S1_pp, prior_S0, prior_S1
+pred_SI_all <- pred_SI_all %>%
+  select(N_00, N_01, N_10, N_11, S0_pp, S1_pp, prior_S0, prior_S1)
+
+
+pred_SI_all$contingency <- pred_SI_all$N_11
+
+
+
+pred_SI_all$contingency <- factor(pred_SI_all$contingency, 
+                              levels = c("4", "3", "2", "1", "0"), 
+                              labels = c("P(e+|c+) 4/4 \nP(e+|c-) 4/4", "P(e+|c+) 3/4 \nP(e+|c-) 3/4", "P(e+|c+) 2/4 \nP(e+|c-) 2/4", 
+                                         "P(e+|c+) 1/4 \nP(e+|c-) 1/4", "P(e+|c+) 0/4 \nP(e+|c-) 0/4"))
+
+```
+
+```{r}
+library(ggplot2)
+
+ggplot(pred_SI_all, aes(x = prior_S1, y = S1_pp, color = contingency, group = contingency)) +
+  # 45° reference line
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray40", linewidth = 1) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2) +
+  scale_x_continuous(
+    name = expression("Prior: P(S"[1]*")"),
+    breaks = seq(0, 1, 0.1),
+    limits = c(0, 1)
+  ) +
+  scale_y_continuous(
+    name = expression("Posterior: P(S"[1]*" | data)"),
+    breaks = seq(0, 1, 0.1),
+    limits = c(0, 1)
+  ) +
+  scale_color_viridis_d(option = "C", end = 0.9) +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "right",
+    legend.title = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5)
+  ) +
+  ggtitle(expression("Posterior belief in S1 as a function of prior belief in S1")) +
+  coord_equal()+
+  theme(
+    plot.margin = margin(t = 0, r = 0, b = 0, l = 0)
+  )
+
+# save plot as svg 
+
+ggsave("SI_model_prior_vs_posterior_S1_N8.svg", width = 7, height = 5)
+ggsave("SI_model_prior_vs_posterior_S1_N8.pdf", width = 7, height = 5)
+```
+
+```{r}
+
+library(ggnewscale)
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(grid)
+
+# --- Prepare data ---
+seg <- pred_SI_all %>%
+  select(contingency, prior_S1, S1_pp) %>%
+  transmute(
+    contingency,
+    id   = prior_S1,
+    x0   = 0,   # Prior of S1
+    x1   = 1,   # Posterior of S1
+    y0   = prior_S1,
+    y1   = S1_pp
+  )
+
+# Highlighted priors
+seg_hi <- seg %>%
+  filter(near(id, 0) | near(id, 0.5)) %>%
+  mutate(highlight_label = ifelse(near(id, 0), "Prior = 0", "Prior = 0.5"))
+
+# Endpoints for points + labels
+endpts_hi <- seg_hi %>%
+  tidyr::pivot_longer(c(x0, x1, y0, y1),
+                      names_to = c(".value","which"),
+                      names_pattern = "([xy])(\\d)") %>%
+  mutate(
+    which = ifelse(which == "0", "Prior of S1", "Posterior of S1"),
+    x = ifelse(which == "Prior of S1", 0, 1),
+    y = y
+  )
+
+# --- Plot ---
+ggplot() +
+  # Reference line at y = 50
+    geom_hline(yintercept = 0.50, color = "grey20", linewidth = 0.4, linetype = "dashed") +
+  # faint background arrows
+  geom_segment(
+    data = seg,
+    aes(x = x0, xend = x1, y = y0, yend = y1),
+    color = "black",
+    linewidth = 0.8, alpha = 0.2,
+    arrow = arrow(length = unit(0.15, "cm"), type = "closed")
+  ) +
+
+  # highlighted arrows (two distinct colors)
+  geom_segment(
+    data = seg_hi,
+    aes(x = x0, xend = x1, y = y0, yend = y1, color = highlight_label),
+    linewidth = 2.5, alpha = 0.85,
+    arrow = arrow(length = unit(0.25, "cm"), type = "closed")
+  ) +
+  #geom_point(data = endpts_hi,aes(x = x, y = y, color = highlight_label),size = 3, alpha = 0.9) +
+  geom_text(data = endpts_hi,
+            aes(x = x, y = y, label = sprintf("%.2f", y)),
+            vjust = -1.1, size = 3, color = "black") +
+
+  facet_wrap(~contingency, nrow = 1) +
+  scale_color_manual(
+    name = "Highlighted priors",
+    values = c(
+      "Prior = 0"   = "#7570b3",  # red-orange #1b9e77", "transparent" = "#7570b3
+      "Prior = 0.5" = "#1b9e77"   # teal
+    ),
+    guide = guide_legend(
+      title.position = "top",
+      override.aes = list(linewidth = 3, alpha = 1)
+    )
+  ) +
+  scale_x_continuous(
+    breaks = c(0, 1),
+    labels = c(expression("Prior of S"[1]),
+               expression("Post. of S"[1])),
+    limits = c(-0.1, 1.1),
+    name = NULL
+  ) +
+  scale_y_continuous(
+    name = "Probability",
+    limits = c(0, 1),
+    breaks = seq(0, 1, 0.1)
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+  # …your other theme settings…
+  panel.grid.major.x = element_blank(),
+  panel.grid.minor.x = element_blank(),
+  panel.grid.minor.y = element_blank(),
+  panel.grid.major.y = element_blank(),
+  panel.spacing.x = unit(1.5, "lines"),   # <-- NEW LINE: adds space between facets
+  legend.position = "right",
+  legend.title = element_text(size = 12, face = "bold"),
+  legend.text = element_text(size = 10),
+  strip.text = element_text(face = "bold", size = 12),
+  plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+  axis.text.x = element_text(size = 11,angle = 25, hjust = 1)
+)+
+  labs(
+    title = expression("Prior–Posterior Updates for S"[1]*" across Contingency Conditions")
+  )-> g_update_highlight
+
+g_update_highlight
+
+# Save plot
+#ggsave("SI_model_prior_posterior_updates_highlight.svg", plot = g_update_highlight, width = 14, height = 5)
+
+```
+
+
+```{r}
+library(ggnewscale)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(grid)
+
+# --- Subset contingencies of interest (8/8, 4/4, 0/0) ---
+subset_data <- pred_SI_all %>%
+  filter(N_11 %in% c(4, 2, 0))
+
+# --- Prepare data ---
+seg <- subset_data %>%
+  select(contingency, prior_S1, S1_pp) %>%
+  transmute(
+    contingency,
+    id   = prior_S1,
+    x0   = 0,   # Prior of S1
+    x1   = 1,   # Posterior of S1
+    y0   = prior_S1,
+    y1   = S1_pp
+  )
+
+# Highlighted priors
+seg_hi <- seg %>%
+  filter(near(id, 0) | near(id, 0.5)) %>%
+  mutate(highlight_label = ifelse(near(id, 0), "Prior = 0", "Prior = 0.5"))
+
+# Endpoints for points + labels
+endpts_hi <- seg_hi %>%
+  tidyr::pivot_longer(c(x0, x1, y0, y1),
+                      names_to = c(".value","which"),
+                      names_pattern = "([xy])(\\d)") %>%
+  mutate(
+    which = ifelse(which == "0", "Prior of S1", "Posterior of S1"),
+    x = ifelse(which == "Prior of S1", 0, 1),
+    y = y
+  )
+
+# --- Plot ---
+ggplot() +
+  geom_hline(yintercept = 0.50, color = "grey20", linewidth = 0.4, linetype = "dashed") +
+  geom_segment(
+    data = seg,
+    aes(x = x0, xend = x1, y = y0, yend = y1),
+    color = "black",
+    linewidth = 0.8, alpha = 0.2,
+    arrow = arrow(length = unit(0.15, "cm"), type = "closed")
+  ) +
+  geom_segment(
+    data = seg_hi,
+    aes(x = x0, xend = x1, y = y0, yend = y1, color = highlight_label),
+    linewidth = 2.5, alpha = 0.85,
+    arrow = arrow(length = unit(0.25, "cm"), type = "closed")
+  ) +
+  geom_text(data = endpts_hi,
+            aes(x = x, y = y, label = sprintf("%.2f", y)),
+            vjust = -1.1, size = 3, color = "black") +
+  facet_wrap(~contingency, nrow = 1) +
+  scale_color_manual(
+    name = "Highlighted priors",
+    values = c(
+      "Prior = 0"   = "#7570b3",
+      "Prior = 0.5" = "#1b9e77"
+    ),
+    guide = guide_legend(
+      title.position = "top",
+      override.aes = list(linewidth = 3, alpha = 1)
+    )
+  ) +
+  scale_x_continuous(
+    breaks = c(0, 1),
+    labels = c(expression("Prior of S"[1]),
+               expression("Post. of S"[1])),
+    limits = c(-0.1, 1.1),
+    name = NULL
+  ) +
+  scale_y_continuous(
+    name = "Probability",
+    limits = c(0, 1),
+    breaks = seq(0, 1, 0.1)
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.spacing.x = unit(2, "lines"),
+    legend.position = "right",
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10),
+    strip.text = element_text(face = "bold", size = 12),
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+    axis.text.x = element_text(size = 11, angle = 0, hjust = 0.5)
+  ) +
+  labs(
+    title = expression("Prior–Posterior Updates for S"[1]*"")
+  ) -> g_update_highlight_subset
+
+g_update_highlight_subset
+
+# Save subset plot
+ggsave("SI_model_prior_posterior_updates_highlight_subset_N8.svg",
+       plot = g_update_highlight_subset, width = 10, height = 4)
+
+ggsave("SI_model_prior_posterior_updates_highlight_subset_N8.pdf",
+       plot = g_update_highlight_subset, width = 10, height = 4)
+
+
+```
+

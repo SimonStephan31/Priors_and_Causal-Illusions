@@ -1,0 +1,498 @@
+---
+title: "eval"
+author: ""
+date: "10 11 2020"
+output: html_document
+---
+
+
+```{r, echo=FALSE, message=FALSE}
+# packages
+library(ez)
+library(reshape2)
+library(reshape)
+library(ggplot2)
+library(pastecs)
+library(ez)
+library(data.table)
+library(tidyverse)
+
+library(dplyr)                                                  # Load dplyr package
+#library(plyr)                                                   # Load plyr package
+library(readr)                                                  # Load readr package
+```
+
+
+
+# Get and prepare raw data 
+
+
+
+```{r, message = FALSE, echo = FALSE}
+library(readr)
+data <- read_csv("data.csv")
+
+data_excl <- subset(data,  data$desktop_conf != "1: I confirm" | data$attent_conf != "1: I confirm")
+data <- subset(data, data$desktop_conf == "1: I confirm" & data$attent_conf == "1: I confirm")
+
+```
+
+
+
+```{r}
+table(data$machine, data$contingency)
+```
+
+
+Exclude participants whose learning accuracy (coded in "learning_yellow_accuracy" and "learning_pink_accuracy") is less than 0.875 
+
+
+```{r}
+data_learning_exclusion <- data %>%
+  filter(learning_yellow_accuracy < 7/8 | learning_pink_accuracy < 7/8)
+
+
+data <- data %>%
+  filter(learning_yellow_accuracy >= 7/8 & learning_pink_accuracy >= 7/8)
+```
+
+```{r}
+total_N <- nrow(data) + nrow(data_learning_exclusion)
+# percentage excluded
+excl_percentage <- (nrow(data_learning_exclusion) / total_N) * 100
+excl_percentage
+```
+
+```{r}
+table(data$machine, data$contingency)
+table(data$condition)
+```
+
+
+```{r}
+# exclude last participants in the 0_0 conditions (because we aimed for N = 50 in each condition)
+library(dplyr)
+
+data <- data %>%
+  arrange(machine, contingency, recorded_at) %>%   # earliest -> latest within condition
+  group_by(machine, contingency) %>%
+  slice_head(n = 50) %>%                           # keep first 50 per condition
+  ungroup()
+
+
+table(data$machine, data$contingency)
+table(data$condition)
+```
+
+
+
+# Analysis
+
+```{r}
+
+
+
+# relable factor "str_query_type" so that "prob" becomes "agree" 
+
+data$contingency <- factor(data$contingency, 
+                              levels = c("1_1", "075_075", "05_05", "025_025", "0_0"), 
+                              labels = c("P(e+|c+) 4/4 \nP(e+|c-) 4/4", "P(e+|c+) 3/4 \nP(e+|c-) 3/4", "P(e+|c+) 2/4 \nP(e+|c-) 2/4", 
+                                         "P(e+|c+) 1/4 \nP(e+|c-) 1/4", "P(e+|c+) 0/4 \nP(e+|c-) 0/4"))
+
+
+data$machine <- factor(data$machine, 
+                              levels = c("opaque", "transp"), 
+                              labels = c("opaque", "transparent"))
+
+
+
+table(data$machine, data$contingency)
+
+
+
+```
+
+
+```{r}
+descriptives_prior <- data %>%
+  group_by(machine, contingency) %>%
+  summarise(
+    mean_confidence = mean(structure_rating_prior, na.rm = TRUE),
+    sd_confidence   = sd(structure_rating_prior, na.rm = TRUE)
+  )
+
+descriptives_prior
+
+```
+
+```{r}
+descriptives_post <- data %>%
+  group_by(machine, contingency) %>%
+  summarise(
+    mean_confidence = mean(structure_rating_posterior, na.rm = TRUE),
+    sd_confidence   = sd(structure_rating_posterior, na.rm = TRUE)
+  )
+
+descriptives_post
+```
+
+# Plots 
+
+first a plot that shows only the posterior structure ratings for each machine and contingency condition, with individual data points, mean and 95% CI
+
+```{r}
+machine_colors <- c(
+  # Dark2 Colors (Colors 1-8)
+  "opaque"      = "#1b9e77",  # Dark2 Green
+  "1.0 \n0.5"   = "#d95f02",  # Dark2 Orange
+  "transparent"   = "#7570b3",  # Dark2 Purple
+  "0.25 \n0.25" = "#e7298a",  # Dark2 Pink/Magenta
+  "0.75 \n0.75" = "#66a61e",  # Dark2 Light Green
+  "0.625 \n0.5" = "#e6ab02",  # Dark2 Yellow/Brown
+  "0.875 \n0.5" = "#a6761d"   # Dark2 Brown (The added color)
+  
+  # Note: The 8th Dark2 color is #666666 (Dark Gray), which you could use if you had an 8th condition.
+)
+```
+
+
+
+
+
+Now make a data frame in long format for plotting prior and posterior structure ratings together
+
+```{r}
+# make a separate data frame in long format for plotting, with the DVs being "structure_rating_prior" and "strucutre_rating_posterior"
+data_long <- data %>%
+  pivot_longer(cols = c(structure_rating_prior, structure_rating_posterior),
+               names_to = "rating_type",
+               values_to = "rating_value")
+
+# make rating_type a factor with levels in the desired order
+data_long$rating_type <- factor(data_long$rating_type, levels = c("structure_rating_prior", "structure_rating_posterior"),
+                                labels = c("Prior", "Posterior"))
+```
+
+
+
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(Hmisc)  # for mean_cl_boot
+
+plotDV <- function(df, dv_col, x_jitter = 0.10, y_jitter = 5) {
+  
+  
+  ggplot(df, aes(x = rating_type, y = .data[[dv_col]], fill = machine)) +
+    facet_grid(machine ~ contingency) +
+    scale_y_continuous(limits = c(-10, 110), breaks = seq(0, 100, by = 10)) +
+    
+    # Reference line at y = 50
+    geom_hline(yintercept = 50, color = "grey20", linewidth = 0.4, linetype = "dashed") +
+    
+    # Violin background (lighter, no outline)
+    geom_violin(
+      trim = TRUE, alpha = 0.25,
+      color = NA
+    ) +
+    
+    # Subject lines (jittered both horizontally & vertically)
+    geom_line(
+      aes(group = subj_code),
+      alpha = 0.1,
+      color = "grey50",
+      position = position_jitter(width = x_jitter, height = y_jitter)
+    ) +
+    
+    # Jittered points
+    geom_point(
+      alpha = 0.15,
+      size = 1.2,
+      color = "black",
+      position = position_jitter(width = x_jitter, height = y_jitter)
+    ) +
+    
+    # Bootstrapped mean ±95% CI ribbons (higher alpha)
+    stat_summary(
+      aes(group = machine, fill = machine),
+      fun.data = mean_cl_boot,
+      geom = "ribbon",
+      alpha = 0.55,
+      color = NA
+    ) +
+    
+    # Mean line (per machine)
+    stat_summary(
+      aes(color = machine, group = machine),
+      fun = mean,
+      geom = "line",
+      size = 1
+    ) +
+    
+    # Mean point with thin black border
+    stat_summary(
+      aes(fill = machine),
+      fun.data = mean_cl_boot,
+      geom = "pointrange",
+      shape = 21,
+      color = "black",
+      size = 0.9,
+      stroke = 0.6
+    ) +
+    
+    # Median point (white triangle)
+    stat_summary(
+      fun = median,
+      geom = "point",
+      shape = 24,
+      size = 2.5,
+      fill = "white",
+      color = "black"
+    ) +
+    
+    # Color scales
+    scale_fill_manual(values = machine_colors) +
+    scale_color_manual(values = machine_colors) +
+    
+    labs(
+      x = "Structure Rating",
+      y = "Rating Value"
+    ) +
+    
+    # APA-friendly theme (no gridlines)
+    theme_minimal(base_size = 14) +
+    theme(
+      legend.position = "none",
+      axis.text.x = element_text(angle = 25, hjust = 1),
+      axis.text.y = element_text(size = 10),
+      panel.spacing = unit(3, "lines"),
+      panel.grid = element_blank(),
+      strip.background = element_rect(fill = "white", color = "grey70", linewidth = 0.4),
+      strip.text = element_text(face = "bold", size = 12),
+      axis.title = element_text(face = "bold")
+    )
+}
+
+# ---- Run and Save ----
+p1 <- plotDV(data_long, "rating_value")
+p1
+
+#ggsave("structure_rating_by_machine_APA_colored.svg", plot = p1, width = 8, height = 6)
+#ggsave("structure_rating_by_machine_APA_colored.pdf", plot = p1, width = 8, height = 6)
+
+#ggsave("structure_rating_by_machine_APA_colored_pilot.svg", plot = p1, width = 8, height = 6)
+#ggsave("structure_rating_by_machine_APA_colored_pilot.pdf", plot = p1, width = 8, height = 6)
+
+```
+
+Test the difference between prior and posterior structure ratings depending on machine and contingency condition using a mixed ANOVA with contingency and machine as between-subject factors and rating_type (prior vs. posterior) as within-subject factor
+
+
+```{r}
+anova_data <- data %>%
+  select(subj_code, machine, contingency, structure_rating_prior, structure_rating_posterior) %>%
+  pivot_longer(cols = c(structure_rating_prior, structure_rating_posterior),
+               names_to = "rating_type",
+               values_to = "rating_value")
+
+anova_data$rating_type <- factor(anova_data$rating_type, levels = c("structure_rating_prior", "structure_rating_posterior"),
+                                labels = c("Prior", "Posterior"))
+```
+
+
+```{r}
+library(afex)
+library(emmeans)
+
+a1 <- aov_car(rating_value ~ contingency*machine*rating_type  + Error(subj_code/rating_type), anova_data, anova_table = list(es = "pes")) # the anova model
+a1 
+```
+
+repeat analysis as mixed effects model 
+
+```{r}
+library(lme4)
+library(lmerTest)  # gives p-values
+
+# drop the non-realized contingency levels 
+anova_data <- droplevels(anova_data)
+with(anova_data, table(machine, contingency))
+
+model <- lmer(
+  rating_value ~ machine * contingency * rating_type +
+    (1 | subj_code),
+  data = anova_data
+)
+
+anova(model, type = 3)
+
+
+```
+
+
+```{r}
+emmip(
+  model,
+  contingency ~ rating_type | machine,
+  CIs = TRUE
+)
+```
+
+
+
+
+```{r}
+# means
+group_means <- emmeans(a1, c("rating_type", "contingency", "machine")) 
+group_means
+```
+compute a contrast with emmeans to test if the prior-posterior change is larger in the opaque machine condition compared to the transparent machine condition, across all contingency conditions
+
+```{r}
+pairs(emmeans(a1, ~ rating_type|machine), adjust = "none") -> deltas
+
+deltas
+
+
+# now test the difference in these deltas between the two machine conditions
+pairs(pairs(emmeans(a1, ~ rating_type*machine), adjust = "none"), adjust = "none")
+
+```
+
+```{r}
+pairs(emmeans(a1, ~ rating_type|contingency*machine), adjust = "none") -> deltas
+
+deltas
+```
+
+
+Now make a plot that shows the mean difference (together with the 95% CI) between prior and posterior structure ratings for each machine and contingency condition.
+
+```{r}
+data_diff <- data %>%
+  mutate(rating_diff = structure_rating_posterior - structure_rating_prior) %>%
+  group_by(machine, contingency) %>%
+  summarise(
+    mean_diff = mean(rating_diff, na.rm = TRUE),
+    ci_lower = mean_diff - qt(0.975, df = n() - 1) * sd(rating_diff, na.rm = TRUE) / sqrt(n()),
+    ci_upper = mean_diff + qt(0.975, df = n() - 1) * sd(rating_diff, na.rm = TRUE) / sqrt(n())
+  )
+```
+Now make a plot that visualizes this 
+
+```{r}
+ggplot(data_diff, aes(x = contingency, y = mean_diff, fill = machine)) +
+  #facet_wrap(~ contingency) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), width = 0.7) +
+  geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), 
+                position = position_dodge(width = 0.9), width = 0.2) +
+  scale_fill_manual(values = machine_colors) +
+  labs(
+    title = "Change in Structure Ratings (Posterior - Prior)",
+    x = "Contingency",
+    y = "Mean Difference"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "top",
+    axis.text.x = element_text(angle = 25, hjust = 1)
+  ) -> p2
+p2
+# save plot 
+#ggsave("delta.svg", plot = p2, width = 6, height = 4)
+```
+
+Compute the different between prior and posterior for each participant and append it to data frame 
+
+```{r}
+data <- data %>%
+  mutate(rating_diff = structure_rating_posterior - structure_rating_prior)
+```
+
+Code for each participate what kind of rating difference occurred: no difference, increase, decrease. For the "no difference" type, allow for some noise of plus minus 5 points 
+
+```{r}
+data <- data %>%
+  mutate(rating_diff_type = case_when(
+    rating_diff > 0 ~ "increase",
+    rating_diff < 0 ~ "decrease",
+    TRUE ~ "same"
+  ))
+```
+
+
+Now make a plot that shows the proportions of these rating_diff_type for each machine and contingency condition; as error bars, show 95% Proportion CIs (using binom.confint from the binom package)
+
+```{r}
+library(binom)
+data_diff_type <- data %>%
+  group_by(machine, contingency, rating_diff_type) %>%
+  summarise(
+    count = n()
+  ) %>%
+  group_by(machine, contingency) %>%
+  mutate(
+    total = sum(count),
+    proportion = count / total
+  ) %>%
+  ungroup()
+# compute 95% CIs for proportions
+data_diff_type <- data_diff_type %>%
+  rowwise() %>%
+  mutate(
+    ci = list(binom.confint(count, total, method = "wilson"))
+  ) %>%
+  unnest_wider(ci) %>%
+  select(-c(method, mean, x))
+
+
+ggplot(data_diff_type, aes(x = contingency, y = proportion, fill = rating_diff_type)) +
+  facet_wrap(~ machine) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), width = 0.7) +
+  geom_errorbar(aes(ymin = lower, ymax = upper), 
+                position = position_dodge(width = 0.9), width = 0.2) +
+  scale_fill_manual(values = c("increase" = "#1b9e77", "same" = "#d95f02", "decrease" = "#7570b3")) +
+  labs(
+    title = "Proportion of Rating Change Types",
+    x = "Contingency",
+    y = "Proportion", 
+    fill = "change type"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "top",
+    axis.text.x = element_text(angle = 25, hjust = 1)
+  )+ # define y axis limits so that they go from 0 to 1 in steps of 0.25
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, by = 0.25))-> p3
+p3
+# save plot 
+#ggsave("subgroups.svg", plot = p3, width = 14, height = 6)
+#ggsave("subgroups.pdf", plot = p3, width = 14, height = 6)
+
+#ggsave("subgroups_pilot.svg", plot = p3, width = 14, height = 6)
+#ggsave("subgroups_pilot.pdf", plot = p3, width = 14, height = 6)
+```
+
+
+Determine the proportion of participants in the "transparent" condition who fell into the "same" cluster and a "rating_diff" of 0
+```{r}
+data %>%
+  filter(machine == "transparent" & rating_diff_type == "same") %>%
+  summarise(
+    count = n()
+  ) -> transparent_same_count
+
+data %>%
+  filter(machine == "transparent" & rating_diff_type == "same" & structure_rating_prior == 0) %>%
+  summarise(
+    count = n()
+  ) -> transparent_same_count_zero_prior
+
+
+transparent_same_count_zero_prior/transparent_same_count
+```
+
+
+
