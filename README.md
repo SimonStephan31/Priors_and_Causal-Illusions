@@ -1,4 +1,4 @@
-# Density Bias and Mechanism Priors
+# Manipulating Prior Causal Beliefs Through Causal Mechanism Information Affects the Outcome-Density Bias
 
 This repository contains all materials for the paper "Manipulating Prior Causal Beliefs Through Causal Mechanism Information Affects the Outcome-Density Bias".
 
