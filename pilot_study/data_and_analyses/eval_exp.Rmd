@@ -1,7 +1,7 @@
 ---
 title: "eval"
 author: ""
-date: "10 11 2020"
+date: ""
 output: html_document
 ---
 
@@ -380,6 +380,8 @@ data_diff <- data %>%
     ci_upper = mean_diff + qt(0.975, df = n() - 1) * sd(rating_diff, na.rm = TRUE) / sqrt(n())
   )
 ```
+
+
 Now make a plot that visualizes this 
 
 ```{r}
@@ -493,6 +495,4 @@ data %>%
 
 transparent_same_count_zero_prior/transparent_same_count
 ```
-
-
 

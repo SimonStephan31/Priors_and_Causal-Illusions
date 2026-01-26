@@ -1,7 +1,7 @@
 ---
 title: "eval"
 author: ""
-date: "10 11 2020"
+date: ""
 output: html_document
 ---
 
@@ -241,8 +241,8 @@ plotDV <- function(df, dv_col, x_jitter = 0.10, y_jitter = 5) {
 p1 <- plotDV(data_long, "rating_value")
 p1
 
-ggsave("structure_rating_by_device_mechanism_APA_colored.svg", plot = p1, width = 8, height = 6)
-ggsave("structure_rating_by_device_mechanism_APA_colored.pdf", plot = p1, width = 8, height = 6)
+#ggsave("structure_rating_by_device_mechanism_APA_colored.svg", plot = p1, width = 8, height = 6)
+#ggsave("structure_rating_by_device_mechanism_APA_colored.pdf", plot = p1, width = 8, height = 6)
 
 
 ```
@@ -385,8 +385,8 @@ ggplot(data_diff_type, aes(x = contingency, y = proportion, fill = rating_diff_t
   scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, by = 0.25))-> p3
 p3
 # save plot 
-ggsave("subgroups.svg", plot = p3, width = 14, height = 6)
-ggsave("subgroups.pdf", plot = p3, width = 14, height = 6)
+#ggsave("subgroups.svg", plot = p3, width = 14, height = 6)
+#ggsave("subgroups.pdf", plot = p3, width = 14, height = 6)
 ```
 
 Determine the proportion of participants in the "transparent" condition who fell into the "same" cluster and a "rating_diff" of 0
@@ -514,8 +514,8 @@ ggplot(pred_SI_all, aes(x = prior_S1, y = S1_pp, color = contingency, group = co
 
 # save plot as svg 
 
-ggsave("SI_model_prior_vs_posterior_S1_N8.svg", width = 7, height = 5)
-ggsave("SI_model_prior_vs_posterior_S1_N8.pdf", width = 7, height = 5)
+#ggsave("SI_model_prior_vs_posterior_S1_N8.svg", width = 7, height = 5)
+#ggsave("SI_model_prior_vs_posterior_S1_N8.pdf", width = 7, height = 5)
 ```
 
 ```{r}
@@ -734,11 +734,11 @@ ggplot() +
 g_update_highlight_subset
 
 # Save subset plot
-ggsave("SI_model_prior_posterior_updates_highlight_subset_N8.svg",
-       plot = g_update_highlight_subset, width = 10, height = 4)
+#ggsave("SI_model_prior_posterior_updates_highlight_subset_N8.svg",
+#       plot = g_update_highlight_subset, width = 10, height = 4)
 
-ggsave("SI_model_prior_posterior_updates_highlight_subset_N8.pdf",
-       plot = g_update_highlight_subset, width = 10, height = 4)
+#ggsave("SI_model_prior_posterior_updates_highlight_subset_N8.pdf",
+#       plot = g_update_highlight_subset, width = 10, height = 4)
 
 
 ```

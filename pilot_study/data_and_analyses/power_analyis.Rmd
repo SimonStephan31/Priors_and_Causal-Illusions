@@ -1,0 +1,58 @@
+---
+title: "sample_size_planning"
+output: html_document
+date: ""
+---
+
+```{r, echo=FALSE, message=FALSE}
+# packages
+library(ez)
+library(reshape2)
+library(reshape)
+library(ggplot2)
+library(pastecs)
+library(ez)
+library(data.table)
+library(tidyverse)
+
+library(dplyr)                                                  # Load dplyr package
+#library(plyr)                                                   # Load plyr package
+library(readr)                                                  # Load readr package
+```
+
+
+Effect from pilot study for the interaction between device mechanism (between-subjects factor with 2 levels) and causal rating type (within-subjects factor with 2 levels) was η² = .036.
+
+```{r}
+# convert partial eta squared to Cohen's f
+eta_squared <- 0.036
+cohen_f <- sqrt(eta_squared / (1 - eta_squared))
+cohen_f
+```
+
+
+```{r}
+# reduce to 60% of that value to have more conservative estimate 
+cohen_f_conservative <- cohen_f * 0.6
+cohen_f_conservative
+```
+
+
+```{r}
+# convert back to eta squared
+eta_squared_conservative <- cohen_f_conservative^2 / (cohen_f_conservative ^2 + 1)
+eta_squared_conservative
+```
+
+
+
+```{r}
+library(pwrss)
+power.f.mixed.anova(eta.squared = .013,
+                    factor.levels = c(6, 2), # c("between", "within") we here use 6 (the total number of conditions) instead of 2 (the number of device mech. conditions) to be more conservative 
+                    power = 0.90,
+                    alpha = 0.05,
+                    rho.within = 0.50,
+                    effect = "interaction")
+```
+Yields a total sample size of N = 324 for the main study, which we rounded up further to N = 360 (n = 60 participants in each of the 6 conditions). 
