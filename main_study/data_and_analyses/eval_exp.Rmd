@@ -247,6 +247,17 @@ p1
 
 ```
 
+```{r}
+# get the median ratings in each condition 
+data_long %>%
+  group_by(device_mechanism, contingency, causal_rating_type) %>%
+  summarise(median_rating = median(rating_value)) -> medians
+
+medians
+```
+
+
+
 ## Statistical tests
 
 Test the difference between prior and posterior structure ratings depending on device_mechanism and contingency condition using a mixed ANOVA with contingency and device_mechanism as between-subject factors and rating_type (prior vs. posterior) as within-subject factor
