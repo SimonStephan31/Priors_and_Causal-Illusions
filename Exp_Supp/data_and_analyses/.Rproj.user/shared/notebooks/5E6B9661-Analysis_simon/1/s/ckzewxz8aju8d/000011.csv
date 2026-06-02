@@ -1,0 +1,6 @@
+"0",""
+"0",""
+"0","# save as svg "
+"0","ggsave(""Figures/results_priors.svg"", plot = plot, width = 8, height = 6, device = ""svg"")"
+"2","Fehler in x$theme : Objekt des Typs 'closure' ist nicht indizierbar
+"

@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Demo</title>
+    <script src="jspsych/jspsych.js"></script>
+    <script src="jspsych/plugin-html-button-response.js"></script>
+    <script src="jspsych/plugin-survey-multi-choice.js"></script>
+    <script src="jspsych/plugin-html-slider-response.js"></script>
+    <script src="jspsych/plugin-image-keyboard-response.js"></script>
+    <script src="jspsych/plugin-image-button-response.js"></script>
+    <script src="jspsych/plugin-image-slider-response.js"></script>
+    <script src="jspsych/plugin-html-keyboard-response.js"></script>
+    <script src="jspsych/plugin-survey-likert.js"></script>
+    <script src="jspsych/plugin-survey-html-form.js"></script>
+    <script src="jspsych/plugin-preload.js"></script>
+    <script src="jspsych/plugin-survey-text.js"></script>
+    <link href="jspsych/jspsych.css" rel="stylesheet" type="text/css" />
+  </head>
+  <body></body>
+  <script>
+
+var jsPsych = initJsPsych({
+  experiment_width: 800,
+  on_finish: function(){
+    window.location = "https://app.prolific.com/submissions/complete?cc=C11QKGDG"
+  }
+});
+
+// Experimental Variables
+//var condition = CONDITION + 0;
+var condition;
+jsPsych.data.addProperties({condition: +condition});
+
+var machine;
+var machine_type;
+var prob_text;
+var contingency;
+var sampleN;
+var demo_mode = false; 
+
+// Generate subject code
+function makeid(length) {
+    var result = '';
+    var characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    for ( var i = 0; i < length; i++ ) {
+      result += characters.charAt(Math.floor(Math.random() * characters.length));
+    }
+    return result;
+}
+var subj_code = makeid(12);
+jsPsych.data.addProperties({subj_code: subj_code});
+
+/* preload images */
+var preload = {
+  type: jsPsychPreload,
+  images: ["img/uni_org_color_li.png", 'img/1_1.png', 'img/05_05.png', 'img/1_05.png', 'img/1_1_noWall.png',
+  'img/C0_E0.png', 'img/C1_E0.png', 'img/C0_E1.png', 'img/C1_E1.png', 'img/PartialMech.png', 'img/PartialMech_noWall.png']
+}
+
+// Add custom CSS
+var styles = `p { text-align: justify }`;
+var styleSheet = document.createElement("style");
+styleSheet.type = "text/css";
+styleSheet.innerText = styles;
+document.head.appendChild(styleSheet);
+
+var timeline = [preload];
+
+// 1. Condition selection (demo only)
+var select = {
+  type: jsPsychSurveyText,
+  questions: [
+    {
+      prompt: `<p><b>Select a condition:</b></p>
+      <p>  
+      1: { machine: "full", type: "S0", contingency: "1_1", sampleN: "8" },<br>
+      2: { machine: "partial", type: "S0", contingency: "1_1", sampleN: "8" },<br>
+      3: { machine: "full", type: "S1", contingency: "1_1", sampleN: "8" },<br>
+      4: { machine: "partial", type: "S1", contingency: "1_1", sampleN: "8" },<br>
+<br>
+      5: { machine: "partial", type: "S1", contingency: "05_05", sampleN: "8" },<br>
+      6: { machine: "full", type: "S1", contingency: "05_05", sampleN: "8" },<br>
+      7: { machine: "partial", type: "S0", contingency: "05_05", sampleN: "8" },<br>
+      8: { machine: "full", type: "S0", contingency: "05_05", sampleN: "8" },<br>
+      </p>`,
+      placeholder: '1-8',
+      required: true,
+      name: 'CondSel'
+    }
+  ],
+  on_finish: function(data){ condition = parseInt(data.response.CondSel); }
+};
+timeline.push(select);
+
+// 2. Mapping and Confirmations
+var confs = {
+  type: jsPsychSurveyMultiChoice,
+  questions: [
+    { prompt: "Please confirm that you take part via Desktop PC or Laptop.", name: 'DesktopConf', options: ['1: I confirm', '2: I do not confirm'], required: true },
+    { prompt: "Please confirm that you take your participation seriously.", name: 'AttentConf', options: ['1: I confirm', '2: I do not confirm'], required: true }
+  ],
+  on_finish: function (data) {
+    const map = {
+      // Original Mechanism Conditions
+      1: { machine: "full", type: "S0", contingency: "1_1", sampleN: "8" },
+      2: { machine: "partial", type: "S0", contingency: "1_1", sampleN: "8" },
+      3: { machine: "full", type: "S1", contingency: "1_1", sampleN: "8" },
+      4: { machine: "partial", type: "S1", contingency: "1_1", sampleN: "8" },
+
+      5: { machine: "partial", type: "S1", contingency: "05_05", sampleN: "8" },
+      6: { machine: "full", type: "S1", contingency: "05_05", sampleN: "8" },
+      7: { machine: "partial", type: "S0", contingency: "05_05", sampleN: "8" },
+      8: { machine: "full", type: "S0", contingency: "05_05", sampleN: "8" },
+    };
+
+    const sel = map[condition] || map[1];
+    machine = sel.machine;
+    type = sel.type;
+    prob_text = sel.prob_text || "";
+    contingency = sel.contingency;
+    sampleN = sel.sampleN;
+
+    jsPsych.data.addProperties({
+      desktop_conf: data.response.DesktopConf,
+      attent_conf: data.response.AttentConf,
+      machine: machine,
+      type: type,
+      contingency: contingency,
+      sampleN: sampleN
+    });
+  },
+  preamble: `<p><img src="img/uni_org_color_li.png" width=100%></img></p>
+  <p>Please note: This study contains memory/comprehension checks.</p>`
+};
+timeline.push(confs);
+
+// 3. Original Intro Formulations (Universal)
+const intro_masked = {
+  type: jsPsychHtmlButtonResponse,
+  stimulus: `
+    <div style="max-width: 800px; margin: auto; text-align: left; line-height: 1.6;">
+      <h2 style="text-align: center;">Welcome to the Experiment</h2>
+
+      <p>In this study, you will learn about a special device used by psychologists to study how people understand cause and effect. An illustration of the device is shown below:</p>
+
+      <div style="text-align: center; margin: 20px 0;">
+        <img src="img/C0_E0.png" style="width: 100%; border: 1px solid #ccc;">
+        <p><i>The device in its starting position: neither ball is moving.</i></p>
+      </div>
+
+      <p>This device contains two balls: a <b><span style="color:#FFD700;">YELLOW</span></b> ball and a <b><span style="color: #FF69B4;">PINK</span></b> ball.</p>
+
+      <hr>
+
+      <h3>How the Device Works</h3>
+      <p>There are two different "models" of this device. Although they look identical on the outside, they work differently on the inside:</p>
+
+      <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+        <tr style="background-color: #f9f9f9;">
+          <td style="padding: 15px; border: 1px solid #ddd; width: 50%;">
+            <strong>1. The Causal Model</strong><br>
+            The movement of the yellow ball <b>can cause</b> the pink ball to move. 
+            <br><br>
+            <small><i>Note: The pink ball might also move on its own due to an internal trigger operating independently of the yellow ball.</i></small>
+          </td>
+          <td style="padding: 15px; border: 1px solid #ddd;">
+            <strong>2. The Non-Causal Model</strong><br>
+            The movement of the yellow ball <b>cannot cause</b> the pink ball to move. 
+            <br><br>
+            <small><i>Note: In this model, the pink ball only moves if it is started by an internal trigger operating independently of the yellow ball.</i></small>
+          </td>
+        </tr>
+      </table>
+
+      <p style="margin-top: 20px;">The internal mechanism of the device shown above is currently covered. Your task will involve figuring out which model it is.</p>
+
+      <p style="background-color: #eee; padding: 10px; text-align: center; border-radius: 5px;">
+        <i>Once you have read and understood these descriptions, click <b>Continue</b>.</i>
+      </p>
+    </div>
+  `,
+  choices: ['Continue']
+};
+timeline.push(intro_masked);
+
+// 4. Prior Manipulation Branch
+const intro_transparent_full = {
+  type: jsPsychHtmlButtonResponse,
+  stimulus: function() {
+    let mech_img;
+
+    // Default mapping based on contingency
+    const images = {
+      "1_1": "img/1_1.png",
+      "1_0": "img/1_0.png",
+      "05_05": "img/05_05.png",
+      "0_0": "img/0_0.png"
+    };
+
+    // Logic for Informative S1: 
+    // If 05_05 -> show 1_05 | If 0_0 -> show 1_0
+    if (type === "S1") {
+      if (contingency === "05_05") {
+        mech_img = "img/1_05.png";
+      } else if (contingency === "1_1") {
+        mech_img = "img/1_1_noWall.png";
+      } else {
+        mech_img = images[contingency];
+      }
+    } 
+    // Logic for Informative S0: 
+    // If 1_0 -> show 0_0 | If 1_05 -> show 05_05
+    else if (machine === "full") {
+      if (contingency === "1_0") {
+        mech_img = "img/0_0.png";
+      } else if (contingency === "1_05") {
+        mech_img = "img/05_05.png";
+      } else {
+        mech_img = images[contingency];
+      }
+    } 
+    // Fallback for uninformative or other conditions
+    else {
+      mech_img = "img/C0_E0.png";
+    }
+
+    return `
+      <div style="max-width: 800px; margin: auto; text-align: left; line-height: 1.6;">
+        <h2 style="text-align: center; color: #b22222;">Look Inside the Device</h2>
+
+        <p>Before you see the device in action, we want to show you the <b>internal mechanism</b> of the <b>specific device</b> you will be asked about for the rest of this experiment.</p>
+
+        <p>The image below reveals the <b>internal mechanism</b> of this <b>specific device</b>.</p>
+
+        <div style="text-align: center; margin: 25px 0; border: 2px solid #333; padding: 10px; border-radius: 8px;">
+          <img src="${mech_img}" style="width: 100%; max-width: 800px;">
+          <p style="margin-top: 10px;"><strong>Internal View of the Mechanism</strong></p>
+        </div>
+
+        <p>Study this carefully to determine:</p>
+        <ul>
+          <li>Can the <b>yellow ball</b> cause the <b>pink ball</b> to move in this model?</li>
+        </ul>
+
+        <div style="background-color: #fff3cd; border-left: 5px solid #ffeeba; padding: 15px; margin: 20px 0;">
+          <strong>Important:</strong> This is your <b>only opportunity</b> to see inside. On all following screens, the mechanism will be covered.
+        </div>
+
+        <hr>
+        <p style="text-align: center;"><i>Click "Continue" once you have thoroughly studied the mechanism.</i></p>
+      </div>
+    `;
+  },
+  choices: ['Continue']
+};
+
+
+// 4. Prior Manipulation Branch
+const intro_transparent_partial = {
+  type: jsPsychHtmlButtonResponse,
+  stimulus: function() {
+    let mech_img;
+
+    // Default mapping based on contingency
+    const images = {
+      "1_1": "img/1_1.png",
+      "1_0": "img/1_0.png",
+      "05_05": "img/05_05.png",
+      "0_0": "img/0_0.png"
+    };
+
+    // Logic for Informative S1: 
+    // If 05_05 -> show 1_05 | If 0_0 -> show 1_0
+    if (type === "S1") {
+      if (contingency === "05_05") {
+        mech_img = "img/PartialMech_noWall.png";
+      } else if (contingency === "1_1") {
+        mech_img = "img/PartialMech_noWall.png";
+      } else {
+        mech_img = images[contingency];
+      }
+    } 
+    // Logic for Informative S0: 
+    // If 1_0 -> show 0_0 | If 1_05 -> show 05_05
+    else if (machine === "informative_S0") {
+      if (contingency === "1_0") {
+        mech_img = "img/0_0.png";
+      } else if (contingency === "1_05") {
+        mech_img = "img/05_05.png";
+      } else {
+        mech_img = images[contingency];
+      }
+    } 
+    // Fallback for uninformative or other conditions
+    else {
+      mech_img = "img/PartialMech.png";
+    }
+
+    return `
+      <div style="max-width: 800px; margin: auto; text-align: left; line-height: 1.6;">
+        <h2 style="text-align: center; color: #b22222;">Look Inside the Device</h2>
+
+        <p>Before you see the device in action, we want to show you the bottom part of the <b>internal mechanism</b> of the <b>specific device</b> you will be asked about for the rest of this experiment.</p>
+
+        <p>The image below reveals this bottom part of the <b>internal mechanism</b> of this <b>specific device</b>.</p>
+
+        <div style="text-align: center; margin: 25px 0; border: 2px solid #333; padding: 10px; border-radius: 8px;">
+          <img src="${mech_img}" style="width: 100%; max-width: 800px;">
+          <p style="margin-top: 10px;"><strong>Partial Internal View of the Mechanism</strong></p>
+        </div>
+
+        <p>Study this carefully to determine:</p>
+        <ul>
+          <li>Can the <b>yellow ball</b> cause the <b>pink ball</b> to move in this model?</li>
+        </ul>
+
+        <div style="background-color: #fff3cd; border-left: 5px solid #ffeeba; padding: 15px; margin: 20px 0;">
+          <strong>Important:</strong> This is your <b>only opportunity</b> to see inside. On all following screens, the mechanism will be covered.
+        </div>
+
+        <hr>
+        <p style="text-align: center;"><i>Click "Continue" once you have thoroughly studied the mechanism.</i></p>
+      </div>
+    `;
+  },
+  choices: ['Continue']
+};
+
+
+var prior_manipulation = {
+  timeline: [
+    { timeline: [intro_transparent_full], conditional_function: function() { return machine === 'full'; } },
+    { timeline: [intro_transparent_partial], conditional_function: function() { return machine === 'partial'; } }
+  ]
+};
+timeline.push(prior_manipulation);
+/////////////////////////////////////// Assessing the prior /////////////////////////////
+
+var test_structure_prior = {
+  type: jsPsychSurveyHtmlForm,
+
+  preamble: function() {
+
+    // Decide which mechanism illustration to show
+    let mech_img = "img/C0_E0.png";
+
+    return `
+      <p><b>The picture below shows the specific device you'll be asked about in this study, with its inside covered.</b></p>
+      <p><img src="${mech_img}" width="100%"></img></p>
+      <hr>
+    `;
+  },
+
+  html: `
+    <style>
+      input[type="range"] {
+        -webkit-appearance: none;
+        width: 100%;
+        height: 8px;
+        background: #d3d3d3;
+        outline: none;
+        opacity: 0.7;
+        transition: opacity .2s;
+        border-radius: 5px;
+      }
+
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 20px; height: 20px;
+        border-radius: 50%;
+        background: #00008B;
+        cursor: pointer;
+        opacity: 0;
+        transition: opacity 0.2s ease-in-out;
+        margin-top: -6px;
+      }
+
+      input[type="range"].touched::-webkit-slider-thumb { opacity: 1; }
+      input[type="range"].touched::-webkit-slider-runnable-track { background: #2196F3; }
+
+      .slider-label {
+        font-size: 0.75em;
+        line-height: 1.3;
+      }
+
+      .slider-value-display {
+        font-weight: bold;
+        margin-top: 10px;
+        display: block;
+        text-align: center;
+        visibility: hidden;
+        opacity: 0;
+        transition: opacity 0.2s ease-in-out, visibility 0.2s ease-in-out;
+      }
+
+      .slider-value-display.visible {
+        visibility: visible;
+        opacity: 1;
+      }
+    </style>
+
+   <div style="margin-bottom: 40px;">
+       <p><b>How confident are you that the present device above is one in which the rolling of the
+        <span style="color:#FFD700;">yellow</span> ball can cause the rolling of the 
+        <span style="color:#FF69B4;">pink</span> ball?</b><br>
+        <i>Please use the scale below to report your confidence.</i></p>
+
+
+      <input type="range" id="slider1" name="structure_rating_prior" 
+             min="0" max="100" value="50" step="1"
+             style="width: 100%;" data-interacted="false">
+
+      <div style="display: flex; justify-content: space-between; text-align: center;">
+        <span class="slider-label" style="width: 10%;">Rolling of the <span style="color:#FFD700;">yellow</span> ball <b><u>CANNOT cause</u></b> rolling of the <span style="color:#FF69B4;">pink</span> ball</span>
+        <span class="slider-label" style="width: 10%;">Rolling of the <span style="color:#FFD700;">yellow</span> ball <b><u>CAN cause</u></b> cause rolling of the <span style="color:#FF69B4;">pink</span> ball</span>
+      </div>
+
+      <span id="slider1-value" class="slider-value-display"></span>
+    </div>
+  `,
+
+  on_load: function() {
+    const demo = (typeof demo_mode !== 'undefined' && demo_mode === true);
+    const slider = document.getElementById('slider1');
+    const display = document.getElementById('slider1-value');
+    const button = document.querySelector('#jspsych-survey-html-form-next');
+
+    const update = () => {
+      const v = slider.value;
+      display.textContent = `Selected value: ${v}%`;
+    };
+
+    const check = () => {
+      button.disabled = !demo && slider.dataset.interacted !== 'true';
+    };
+
+    const activate = () => {
+      slider.classList.add('touched');
+      slider.dataset.interacted = 'true';
+      display.classList.add('visible');
+      update();
+      check();
+      if (!demo) {
+        slider.removeEventListener('mouseup', activate);
+        slider.removeEventListener('touchend', activate);
+      }
+    };
+
+    // Require first click
+    if (!demo) {
+      slider.addEventListener('mouseup', activate);
+      slider.addEventListener('touchend', activate);
+    }
+
+    // Update display continuously
+    slider.addEventListener('input', () => {
+      update();
+      if (!demo) slider.dataset.interacted = 'true';
+      check();
+    });
+
+    update();
+    check();
+  },
+
+  on_finish: function(data) {
+    const response = data.response.structure_rating_prior;
+    data.structure_rating_prior = response;
+    jsPsych.data.addProperties({ rating_prior: response });
+    console.log("structure rating:", response);
+  }
+};
+
+
+timeline.push(test_structure_prior);            
+
+
+
+///////////////////////////////////////////////////////////////// Contingency learning 
+
+
+
+// Instructions
+
+const intro_opaque = {
+  type: jsPsychHtmlButtonResponse,
+  stimulus: function() {
+    // This assumes sampleN is a global variable or part of your experimental state
+    return `
+      <h2>Observation phase</h2>
+      <p>You will next be shown ${sampleN} pictures of this specific device in action.</p>
+      <p>Your task is to study each picture and check if the <b><span style="color: #FFD700;">yellow</span></b> and the <b><span style="color: #FF69B4;">pink</span></b> ball rolled.</p>
+      <p>Click "Continue" to start.</p>`;
+  },
+  choices: ['Continue']
+};
+
+
+
+
+const intro_transp = {
+  type: jsPsychHtmlButtonResponse,
+  stimulus: function() {
+    // This assumes sampleN is a global variable or part of your experimental state
+    return `
+      <h2>Observation phase</h2>
+      <p>You will next be shown ${sampleN} pictures of this specific device in action.</p>
+      <p>Your task is to study each picture and check if the <b><span style="color: #FFD700;">yellow</span></b> and the <b><span style="color: #FF69B4;">pink</span></b> ball rolled.</p>
+
+      <p>The device's mechanism will remain covered during this phase, but you've learned what it looks like on the previous screens.</p>
+
+      <p>Click "Continue" to start.</p>`;
+  },
+  choices: ['Continue']
+};
+
+// Decider for instruction type based on condition (opaque vs. transparent)
+var instruction_decider = {
+  timeline: [intro_opaque],
+  conditional_function: function() {
+    return machine === "opaque"; 
+  }
+};
+
+var instruction_decider_transp = {
+  timeline: [intro_transp],
+  conditional_function: function() {
+    return machine != "opaque";
+  }
+};
+
+///////////////////////////////////////// Learning phase (opaque .png images, contingency-based) /////////////////////////
+
+// Render an image trial
+function makeImageHTML(src) {
+  return `
+    <p><b>The picture below shows an occasion on which the device was activated. Please look carefully at the picture below and check which ball rolled on this occasion.</b></p>
+    <br>
+    <img src="${src}" style="width:100%; max-width:1000px; border-radius:10px;" />
+  `;
+}
+
+// OPAQUE image sets by contingency
+const imageSets = {
+  "0_0":        ["C0_E0", "C1_E0"],
+  "05_05":      ["C0_E0", "C1_E0", "C1_E1", "C0_E1"],
+  "1_1":       ["C0_E1", "C0_E1", "C1_E1", "C1_E1"],
+  "1_0":        ["C0_E0", "C1_E1"]
+};
+
+// Build n stimuli for a given contingency (n determined at runtime)
+function generateImageStimuli(cont, n) {
+  const base = imageSets[cont];
+  const repeats = Math.ceil(n / base.length);
+  const list = Array.from({ length: repeats * base.length }, (_, i) => base[i % base.length]).slice(0, n);
+  return list.map(f => ({
+    stimulus: makeImageHTML(`img/${f}.png`),
+    file_id: f
+  }));
+}
+
+// Shuffle helper
+function shuffleArray(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Fixation trial
+var fixation = {
+  type: jsPsychHtmlKeyboardResponse,
+  stimulus: '<div style="font-size:60px;"></div>',
+  choices: "NO_KEYS",
+  trial_duration: 500
+};
+
+// Global store for generated stimuli
+var generated_stimuli = [];
+
+// Setup trial: generates stimuli at runtime before learning loop runs
+var setup_learning = {
+  type: jsPsychHtmlKeyboardResponse,
+  stimulus: '',
+  choices: "NO_KEYS",
+  trial_duration: 1,
+  on_start: function() {
+    const n = parseInt(sampleN);
+    generated_stimuli = shuffleArray(generateImageStimuli(contingency, n));
+    console.log(`Learning phase setup: contingency=${contingency}, n=${n}, trials generated=${generated_stimuli.length}`);
+  }
+};
+
+function buildLearningTrials() {
+  const trials = [];
+  for (let i = 0; i < 16; i++) {
+    const trial_index = i;
+
+    const this_fixation = {
+      type: jsPsychHtmlKeyboardResponse,
+      stimulus: '<div style="font-size:60px;"></div>',
+      choices: "NO_KEYS",
+      trial_duration: 500
+    };
+
+    const this_learning = {
+      type: jsPsychSurveyMultiChoice,
+
+      preamble: function() {
+        return generated_stimuli[trial_index].stimulus;
+      },
+
+      questions: [
+        {
+          prompt: `On this occasion, the <b><span style="color: #FFD700;">yellow</span></b> ball...`,
+          name: "yellow_choice",
+          options: ["rolled", "did not roll"],
+          required: true
+        },
+        {
+          prompt: `On this occasion, the <b><span style="color: #FF69B4;">pink</span></b> ball...`,
+          name: "pink_choice",
+          options: ["rolled", "did not roll"],
+          required: true
+        }
+      ],
+
+      data: function() {
+        return {
+          phase: "learning",
+          file_id: generated_stimuli[trial_index].file_id
+        };
+      },
+
+      on_load: function () {
+        const btn = document.querySelector('#jspsych-survey-multi-choice-next');
+        if (demo_mode) return;
+        btn.disabled = true;
+        setTimeout(() => { btn.disabled = false; }, 500);
+      },
+
+      on_finish: function(data) {
+        const fileID = data.file_id;
+        const trueYellow = fileID[1] === "1" ? 1 : 0;
+        const truePink   = fileID[4] === "1" ? 1 : 0;
+        const yellowAns  = data.response.yellow_choice === "rolled" ? 1 : 0;
+        const pinkAns    = data.response.pink_choice   === "rolled" ? 1 : 0;
+        data.yellow_correct = (yellowAns === trueYellow) ? 1 : 0;
+        data.pink_correct   = (pinkAns   === truePink)   ? 1 : 0;
+        data.true_yellow = trueYellow;
+        data.true_pink   = truePink;
+        console.log(`Trial ${trial_index} ${fileID} → Yellow: ${yellowAns} (true ${trueYellow}), Pink: ${pinkAns} (true ${truePink})`);
+      }
+    };
+
+    // Wrap fixation + learning in a conditional node together
+    trials.push({
+      timeline: [this_fixation, this_learning],
+      conditional_function: function() {
+        return trial_index < generated_stimuli.length;
+      }
+    });
+  }
+  return trials;
+}
+
+const learning_trials = buildLearningTrials();
+
+
+var summarize_learning_accuracy = {
+  type: jsPsychHtmlKeyboardResponse,
+  stimulus: "",
+  choices: "NO_KEYS",
+  trial_duration: 1,
+
+  on_start: function() {
+    const trials = jsPsych.data.get().filter({phase: "learning"});
+    const totalYellowCorrect = trials.select('yellow_correct').sum();
+    const totalPinkCorrect   = trials.select('pink_correct').sum();
+    const n = trials.count();
+    jsPsych.data.addProperties({
+      learning_yellow_correct_total: totalYellowCorrect,
+      learning_pink_correct_total: totalPinkCorrect,
+      learning_yellow_accuracy: totalYellowCorrect / n,
+      learning_pink_accuracy: totalPinkCorrect / n
+    });
+    console.log("Summary:");
+    console.log("Yellow:", totalYellowCorrect, "/", n);
+    console.log("Pink:", totalPinkCorrect, "/", n);
+  }
+};
+
+
+
+/////////////////////////////////////////////////////////////// End of learning phase /////////////////////////
+
+
+// Instructions
+const intro_test = {
+  type: jsPsychHtmlButtonResponse,
+  stimulus: `
+    <h2>End of observation phase</h2>
+    <p>You finished the observation phase.</p>
+    <p>On the next screen, we will ask you the question from the beginning again.</p>
+
+    <p>Click "Continue" to proceed.</p>`,
+  choices: ['Continue']
+};
+
+
+
+
+////////////////////////////////////////////////////////////// Posterior /////////////////////////////////////////
+
+var test_structure_posterior = {
+  type: jsPsychSurveyHtmlForm,
+
+  preamble: function() {
+
+    // Decide which mechanism illustration to show
+    let mech_img = "img/C0_E0.png";
+
+   
+    return `
+      <p><b>The picture below shows the same device again, with its inside covered.</b></p>
+      <p><img src="${mech_img}" width="100%"></img></p>
+      <hr>
+    `;
+  },
+
+  html: `
+    <style>
+      input[type="range"] {
+        -webkit-appearance: none;
+        width: 100%;
+        height: 8px;
+        background: #d3d3d3;
+        outline: none;
+        opacity: 0.7;
+        transition: opacity .2s;
+        border-radius: 5px;
+      }
+
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 20px; height: 20px;
+        border-radius: 50%;
+        background: #00008B;
+        cursor: pointer;
+        opacity: 0;
+        transition: opacity 0.2s ease-in-out;
+        margin-top: -6px;
+      }
+
+      input[type="range"].touched::-webkit-slider-thumb { opacity: 1; }
+      input[type="range"].touched::-webkit-slider-runnable-track { background: #2196F3; }
+
+      .slider-label {
+        font-size: 0.75em;
+        line-height: 1.3;
+      }
+
+      .slider-value-display {
+        font-weight: bold;
+        margin-top: 10px;
+        display: block;
+        text-align: center;
+        visibility: hidden;
+        opacity: 0;
+        transition: opacity 0.2s ease-in-out, visibility 0.2s ease-in-out;
+      }
+
+      .slider-value-display.visible {
+        visibility: visible;
+        opacity: 1;
+      }
+    </style>
+
+    <div style="margin-bottom: 40px;">
+       <p><b>How confident are you that the present device above is one in which the rolling of the
+        <span style="color:#FFD700;">yellow</span> ball can cause the rolling of the 
+        <span style="color:#FF69B4;">pink</span> ball?</b><br>
+        <i>Please use the scale below to report your confidence.</i></p>
+
+
+      <input type="range" id="slider1" name="structure_rating_posterior" 
+             min="0" max="100" value="50" step="1"
+             style="width: 100%;" data-interacted="false">
+
+      <div style="display: flex; justify-content: space-between; text-align: center;">
+        <span class="slider-label" style="width: 10%;">Rolling of the <span style="color:#FFD700;">yellow</span> ball <b><u>CANNOT cause</u></b> rolling of the <span style="color:#FF69B4;">pink</span> ball</span>
+        <span class="slider-label" style="width: 10%;">Rolling of the <span style="color:#FFD700;">yellow</span> ball <b><u>CAN cause</u></b> cause rolling of the <span style="color:#FF69B4;">pink</span> ball</span>
+      </div>
+
+      <span id="slider1-value" class="slider-value-display"></span>
+    </div>
+  `,
+
+  on_load: function() {
+    const demo = (typeof demo_mode !== 'undefined' && demo_mode === true);
+    const slider = document.getElementById('slider1');
+    const display = document.getElementById('slider1-value');
+    const button = document.querySelector('#jspsych-survey-html-form-next');
+
+    const update = () => {
+      const v = slider.value;
+      display.textContent = `Selected value: ${v}%`;
+    };
+
+    const check = () => {
+      button.disabled = !demo && slider.dataset.interacted !== 'true';
+    };
+
+    const activate = () => {
+      slider.classList.add('touched');
+      slider.dataset.interacted = 'true';
+      display.classList.add('visible');
+      update();
+      check();
+      if (!demo) {
+        slider.removeEventListener('mouseup', activate);
+        slider.removeEventListener('touchend', activate);
+      }
+    };
+
+    // Require first click
+    if (!demo) {
+      slider.addEventListener('mouseup', activate);
+      slider.addEventListener('touchend', activate);
+    }
+
+    // Update display continuously
+    slider.addEventListener('input', () => {
+      update();
+      if (!demo) slider.dataset.interacted = 'true';
+      check();
+    });
+
+    update();
+    check();
+  },
+
+  on_finish: function(data) {
+    const response = data.response.structure_rating_posterior;
+    data.structure_rating_posterior = response;
+    jsPsych.data.addProperties({ rating_posterior: response });
+    console.log("structure rating:", response);
+  }
+};
+
+
+/////////////////////////////////////// demographics
+var demogr_age = {
+  type: jsPsychSurveyText,
+  name: 'Age_query',
+  questions: [
+    {prompt: `<p>You are almost done with this study, but we have some final questions. <br> How old are you?</p>`, 
+    placeholder: 'Age as a number', 
+    required: true,
+    name: 'Age'
+    },
+  ],
+  on_finish: function(data){
+	  jsPsych.data.addProperties({age: data.response.Age});
+  },
+}
+
+var demogr_gender = {
+  type: jsPsychSurveyMultiChoice,
+  name: 'gender_query',
+  questions: [
+    {
+      prompt: "Please indicate with which gender you identify.", 
+      options: ['1: male', '2: female', '3: non-binary', '4: prefer not to say'],
+      required: true,
+      name: 'Gender'
+    },
+  ],
+  on_finish: function(data){
+	  jsPsych.data.addProperties({gender: data.response.Gender});
+  },
+};
+
+
+
+timeline.push(instruction_decider, instruction_decider_transp);
+timeline.push(setup_learning, ...learning_trials);
+timeline.push(summarize_learning_accuracy);
+timeline.push(intro_test)
+timeline.push(test_structure_posterior);            
+
+
+timeline.push(demogr_age, demogr_gender);
+
+
+/////////////////////////////////////// technical issues
+var tech_issues = {
+  type: jsPsychSurveyText,
+  name: 'Tech_issue_query',
+  questions: [
+    {prompt: 'In the text field below you can report any errors that you came across during the study (e.g., technical issues, layout problems, spelling errors, errors in program logic and flow, etc.).', 
+    rows: 10, 
+    columns: 100, 
+    required: false,
+    name: 'Tech_issue_report'
+    },
+  ],
+  on_finish: function(data){
+	  jsPsych.data.addProperties({tech_issues: data.response.Tech_issue_report});
+	  console.log(data.response.Tech_issue_report)
+  },
+}
+timeline.push(tech_issues);
+
+
+
+
+var reason = {
+  type: jsPsychSurveyText,
+  name: 'reason',
+  questions: [
+    {prompt: 'Please give an explanation for your rating.', 
+    rows: 10, 
+    columns: 100, 
+    required: false,
+    name: 'reason'
+    },
+  ],
+ on_finish: function(data){
+	  jsPsych.data.addProperties({reason: data.response.reason});
+	  console.log(data.response.reason)
+  },
+}
+//timeline.push(reason);
+
+///////////////////////////////////// debriefing
+
+var debriefing_pretest = {
+  type: jsPsychHtmlButtonResponse,
+  stimulus: 
+    `
+    <img src="img/uni_org_color_li.png" width = 100%></img>
+    
+    <p>This is a pretest of the first phase of our future main study, which is why the study already stops here.</p>
+    
+    <p><b>Thank you for taking part in this study!</b></p>
+  
+    <p>The aim of this experiment is to find out more about how people reason about causality. 
+    If you are interested in further details or if you have any questions or comments concerning the experiment, 
+    feel free to contact me (Simon Stephan) under <i>sstepha1@uni-goettingen.de</i>
+    To ensure you receive your reward, please click the button below to return to the Prolific website:
+    `
+    ,
+    choices: ['Finish study']
+};
+//timeline.push(debriefing_pretest);
+
+
+var debriefing = {
+  type: jsPsychHtmlButtonResponse,
+  stimulus: 
+    `
+    <img src="img/uni_org_color_li.png" width = 100%></img>
+    <p><b>Thank you for taking part in this study!</b></p>
+  
+    <p>The aim of this experiment is to find out more about how people reason about causality. 
+    If you are interested in further details or if you have any questions or comments concerning the experiment, 
+    feel free to contact me (Simon Stephan) under <i>sstepha1@uni-goettingen.de</i>
+    To ensure you receive your reward, please click the button below to return to the Prolific website:
+    `
+    ,
+    choices: ['Finish study']
+};
+timeline.push(debriefing);
+
+
+/////////////////////////////////////////////////////////////////
+/* start the experiment */
+    jsPsych.run(timeline);
+    //jsPsych.simulate(timeline);
+
+  </script>
+</html>

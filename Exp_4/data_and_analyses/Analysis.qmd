@@ -1,0 +1,731 @@
+---
+title: "Analysis"
+format: html
+---
+
+
+
+```{r, echo=FALSE, message=FALSE}
+# packages
+library(ez)
+library(reshape2)
+library(reshape)
+library(ggplot2)
+library(pastecs)
+library(ez)
+library(data.table)
+library(tidyverse)
+
+library(dplyr)                                                  # Load dplyr package
+#library(plyr)                                                   # Load plyr package
+library(readr)                                                  # Load readr package
+```
+
+
+# Get and prepare raw data 
+
+```{r}
+library(readr)
+data <- read_csv("data.csv")
+```
+
+
+```{r, message = FALSE, echo = FALSE}
+data_excl <- subset(data,  data$desktop_conf != "1: I confirm" | data$attent_conf != "1: I confirm")
+data <- subset(data, data$desktop_conf == "1: I confirm" & data$attent_conf == "1: I confirm")
+
+```
+
+
+Exclude participants whose learning accuracy (coded in "learning_yellow_accuracy" and "learning_pink_accuracy") is less than 0.875 
+
+
+```{r}
+data_learning_exclusion <- data %>%
+  filter(learning_yellow_accuracy < 6/8 | learning_pink_accuracy < 6/8)
+
+
+data <- data %>%
+  filter(learning_yellow_accuracy >= 6/8 & learning_pink_accuracy >= 6/8)
+```
+
+```{r}
+total_N <- nrow(data) + nrow(data_learning_exclusion)
+# percentage excluded
+excl_percentage <- (nrow(data_learning_exclusion) / total_N) * 100
+excl_percentage
+```
+
+```{r}
+table(data$prior_level, data$contingency, data$prior_type)
+table(data$condition)
+```
+
+# Demographics 
+
+```{r}
+# make column "age" numeric 
+data$age <- as.numeric(data$age)
+# mean age of participants 
+mean(data$age, na.rm = TRUE)
+# age range of participants 
+range(data$age, na.rm = TRUE)
+
+table(data$gender)
+```
+
+# Data preparation 
+
+Make factors
+
+```{r}
+data$contingency <- factor(data$contingency, 
+                              levels = c("1_1", "05_05"), 
+                              labels = c("P(e+|c+) = 4/4 \nP(e+|c-) = 4/4",
+                                         "P(e+|c+) = 2/4 \nP(e+|c-) = 2/4"))
+
+
+
+data$prior_level <- factor(data$prior_level, 
+                              levels = c("informative_S0", "informative_S1"), 
+                              labels = c("suggests S0", "suggests S1"))
+
+
+data$prior_type <- factor(data$prior_type, 
+                              levels = c("mechanism", "statistical"), 
+                              labels = c("mechanistic", "statistical"))
+```
+
+
+
+# Analysis
+
+
+## Plots 
+
+Make a data frame in long format for plotting prior and posterior structure ratings together
+
+```{r}
+# make a separate data frame in long format for plotting, with the DVs being "structure_rating_prior" and "strucutre_rating_posterior"
+data_long <- data %>%
+  pivot_longer(cols = c(rating_prior, rating_posterior),
+               names_to = "causal_rating_type",
+               values_to = "rating_value")
+
+# make rating_type a factor with levels in the desired order
+data_long$causal_rating_type <- factor(data_long$causal_rating_type, levels = c("rating_prior", "rating_posterior"),
+                                labels = c("Prior", "Posterior"))
+```
+
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(Hmisc)  # for mean_cl_boot
+
+# ---- Setup Colors ----
+prior_level_colors <- c(
+  "suggests S0" = "#7570b3", 
+  "suggests S1" = "#d95f02"
+)
+
+plotDV_consistent <- function(df, dv_col, x_jitter = 0.12, y_jitter = 4) {
+  
+  # --- METHOD 2: PRE-CALCULATE MATCHED JITTER COORDINATES ---
+  df_jittered <- df %>%
+    mutate(x_numeric = as.numeric(as.factor(causal_rating_type))) %>%
+    # Group by subject and all grouping variables to lock the line trajectory shifts on the X-axis
+    group_by(subj_code, prior_level, contingency, prior_type) %>%
+    mutate(
+      x_shift = runif(1, -x_jitter, x_jitter)
+    ) %>%
+    ungroup() %>%
+    # Group by row to assign an individual Y-shift that lines and points will share perfectly
+    rowwise() %>%
+    mutate(
+      y_shift = runif(1, -y_jitter, y_jitter),
+      x_jittered = x_numeric + x_shift,
+      y_jittered = .data[[dv_col]] + y_shift
+    ) %>%
+    ungroup()
+
+  # Extract original phase labels for axis formatting
+  x_labels <- levels(as.factor(df$causal_rating_type))
+  
+  # --- BUILD PLOT WITH ALIGNED JITTER ---
+  ggplot(df_jittered, aes(x = x_jittered, y = y_jittered, 
+                          fill = prior_level, color = prior_level)) +
+    
+    # Setting as.table = FALSE swaps the row order (plotting from bottom-up)
+    facet_grid(prior_level ~ contingency + prior_type, as.table = FALSE) + 
+    
+    # Map text labels back onto the continuous baseline positions
+    scale_x_continuous(breaks = seq_along(x_labels), labels = x_labels) +
+    scale_y_continuous(limits = c(-5, 105), breaks = seq(0, 100, by = 25)) +
+    scale_fill_manual(values = prior_level_colors) +
+    scale_color_manual(values = prior_level_colors) +
+    
+    geom_hline(yintercept = 50, color = "grey30", linewidth = 0.5, linetype = "dotted") +
+    
+    # Background Distributions (Using true un-jittered variables)
+    geom_violin(aes(x = as.numeric(as.factor(causal_rating_type)), y = .data[[dv_col]], group = causal_rating_type), 
+                trim = TRUE, alpha = 0.45, color = NA) +
+    
+    # Individual Subject Trajectories
+    geom_line(
+      aes(group = subj_code),
+      alpha = 0.15,
+      color = "grey50"
+    ) +
+    
+    # Raw Data Points
+    geom_point(
+      alpha = 0.12,
+      size = 1,
+      color = "black"
+    ) +
+    
+    # Medians (Using true un-jittered variables to keep them centered and accurate)
+    stat_summary(
+      aes(x = as.numeric(as.factor(causal_rating_type)), y = .data[[dv_col]]),
+      fun = median,              
+      geom = "point",          
+      shape = 21,              
+      color = "black",         
+      size = 2.5,              
+      stroke = 1.0, 
+      fill = "white"
+    ) +
+    
+    labs(
+      x = "Rating Phase",
+      y = "Structure Rating (0–100)", 
+      fill = "Prior Information", 
+      color = "Prior Information"
+    ) +
+    
+    theme_classic(base_size = 12) +
+    theme(
+      legend.title = element_text(face = "bold"),
+      legend.position = "bottom", 
+      axis.text.x = element_text(size = 10),
+      axis.line = element_line(linewidth = 0.5),
+      panel.spacing = unit(1.2, "lines"),
+      strip.background = element_blank(),
+      strip.text.x = element_text(face = "bold", size = 12),
+      strip.text.y = element_blank(),                       
+      plot.margin = margin(10, 15, 10, 10)
+    )
+}
+
+# ---- Run and Save ----
+p_participants <- plotDV_consistent(data_long, "rating_value")
+p_participants
+
+if(!dir.exists("Figures")) dir.create("Figures")
+ggsave("Figures/Participants.svg", plot = p_participants, width = 8, height = 6, device = "svg")
+```
+
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(Hmisc)  # for mean_cl_boot
+
+
+# ---- Setup Colors ----
+prior_level_colors <- c(
+  "suggests S0" = "#7570b3", 
+  "suggests S1" = "#d95f02"
+)
+
+# ---- Plotting Function: Publication Consistent (Prior vs. Posterior) ----
+plotDV_consistent <- function(df, dv_col, x_jitter = 0.12, y_jitter = 4) {
+  
+  ggplot(df, aes(x = causal_rating_type, y = .data[[dv_col]], 
+                 fill = prior_level, color = prior_level)) +
+    
+    # Facet grid with explicit labels for the Mechanism rows
+    facet_grid(
+       ~ contingency+prior_type, 
+    ) + 
+    
+    # Scale and Aesthetics
+    scale_y_continuous(limits = c(-5, 105), breaks = seq(0, 100, by = 25)) +
+    scale_fill_manual(values = prior_level_colors) +
+    scale_color_manual(values = prior_level_colors) +
+    
+    # Reference line at chance/neutrality
+    geom_hline(yintercept = 50, color = "grey30", linewidth = 0.5, linetype = "dotted") +
+    
+    # 4. Bootstrapped 95% CI Ribbons
+    stat_summary(
+      aes(group = prior_level),
+      fun.data = mean_cl_boot,
+      geom = "ribbon",
+      alpha = 0.4,
+      color = NA
+    ) +
+    
+    # 5. Mean Trajectory Line
+    stat_summary(
+      aes(group = prior_level),
+      fun = mean,
+      geom = "line",
+      linewidth = 1 # Slightly thicker for emphasis
+    ) +
+    
+# 6. Mean Point (Simple point instead of pointrange)
+    stat_summary(
+      fun = mean,              # Just calculate the mean
+      geom = "point",          # Use a simple point geom
+      shape = 21,              # Fillable circle
+      color = "black",         # Outline color
+      size = 2.5,              # Size of the point
+      stroke = 1.0             # Thickness of the outline
+    ) +
+    
+    # Labels
+    labs(
+      x = "Rating Phase",
+      y = "Structure Rating (0–100)", 
+      fill = "Prior Information", 
+      color = "Prior Information"
+    ) +
+    
+    # Consistent Publication Theme
+    theme_classic(base_size = 12) +
+    theme(
+      legend.title = element_text(face = "bold"),
+      legend.position = "bottom", 
+      axis.text.x = element_text(size = 10),
+      axis.line = element_line(linewidth = 0.5),
+      panel.spacing = unit(1.2, "lines"),
+      strip.background = element_blank(),
+      # --- KEY CHANGES HERE ---
+      strip.text.x = element_text(face = "bold", size = 12), # Keep contingency labels
+      strip.text.y = element_blank(),                       # Hide mechanism labels
+      # -------------------------
+      plot.margin = margin(10, 15, 10, 10)
+    )
+}
+
+# ---- Run and Save ----
+p_means <- plotDV_consistent(data_long, "rating_value")
+p_means
+# Save as high-res PDF and PNG
+if(!dir.exists("Figures")) dir.create("Figures")
+
+# also as svg
+ggsave("Figures/Exp4_Means.svg", plot = p_means, width = 7, height = 4, device = "svg")
+# save also as pdf 
+ggsave("Figures/Exp4_Means.pdf", plot = p_means, width = 7, height = 4, device = "pdf")
+```
+
+```{r}
+# Install patchwork if you haven't yet
+# install.packages("patchwork")
+library(patchwork)
+
+# Combine the plots
+# / signifies putting p_means below p_participants
+# | signifies putting them side-by-side
+combined_plot <- p_participants | p_means
+
+# Add labels and fine-tune
+final_plot <- combined_plot + 
+  plot_annotation(tag_levels = 'A') & 
+  theme(plot.tag = element_text(face = "bold", size = 16))
+
+# Display the plot
+final_plot
+
+# Save the combined figure
+ggsave("Figures/Exp4_Combined_Figure.svg", plot = final_plot, width = 12.5, height = 5, device = "svg")
+# save also as pdf 
+ggsave("Figures/Exp4_Combined_Figure.pdf", plot = final_plot, width = 12.5, height = 5, device = "pdf")
+```
+
+
+
+```{r}
+# get the median ratings in each condition 
+data_long %>%
+  group_by(prior_level, prior_type, contingency, causal_rating_type) %>%
+  summarise(median_rating = median(rating_value)) -> medians
+
+medians
+```
+
+
+
+## Statistical tests
+
+Test the difference between prior and posterior structure ratings depending on device_mechanism and contingency condition using a mixed ANOVA with contingency and device_mechanism as between-subject factors and rating_type (prior vs. posterior) as within-subject factor
+
+
+```{r}
+library(afex)
+library(emmeans)
+
+anova_data <- data_long
+
+a1 <- aov_car(rating_value ~ prior_level*prior_type*causal_rating_type*contingency  + Error(subj_code/causal_rating_type), anova_data, anova_table = list(es = "pes")) # the anova model
+a1 
+```
+
+Repeat analysis as mixed effects model (same results in different format)
+
+```{r}
+library(lme4)
+library(lmerTest)  # gives p-values
+
+# drop the non-realized contingency levels 
+#anova_data <- droplevels(anova_data)
+#with(anova_data, table(device_mechanism, contingency))
+
+model <- lmer(
+  rating_value ~ prior_level * prior_type * causal_rating_type * contingency +
+    (1 | subj_code),
+  data = anova_data
+)
+
+anova(model, type = 3)
+```
+
+List of the group means 
+
+```{r}
+# means
+group_means <- emmeans(a1, c("causal_rating_type", "prior_level", "prior_type", "contingency")) 
+group_means
+```
+
+compute a contrast with emmeans to test if the prior-posterior change is larger in the opaque device_mechanism condition compared to the transparent device_mechanism condition, across all contingency conditions
+
+```{r}
+# main effect of device_mechanism
+pairs(emmeans(a1, ~ prior_level), adjust = "none")
+```
+
+
+```{r}
+# main effect of rating type
+pairs(emmeans(a1, ~ causal_rating_type), adjust = "none")
+```
+
+```{r}
+# rating differences across device_mechanism conditions
+pairs(emmeans(a1, ~ causal_rating_type|prior_level), adjust = "none")
+```
+
+
+
+```{r}
+pairs(emmeans(a1, ~ causal_rating_type|contingency*prior_level), adjust = "none") -> deltas
+
+deltas
+```
+
+
+
+
+# Subset 
+
+Now we make subsets: in the conditions suggesting S1, we keep participants with values around of at least 70 and in the conditions suggesting S0, we keep participants with values around not higher than 30. 
+
+```{r}
+library(dplyr)
+
+data_sub <- data %>%
+  filter(
+    (prior_level == "suggests S0" & rating_prior <= 30) |
+    (prior_level == "suggests S1" & rating_prior >= 70)
+  )
+```
+
+
+
+
+## Plots 
+
+Make a data frame in long format for plotting prior and posterior structure ratings together
+
+```{r}
+# make a separate data frame in long format for plotting, with the DVs being "structure_rating_prior" and "strucutre_rating_posterior"
+data_long <- data_sub %>%
+  pivot_longer(cols = c(rating_prior, rating_posterior),
+               names_to = "causal_rating_type",
+               values_to = "rating_value")
+
+# make rating_type a factor with levels in the desired order
+data_long$causal_rating_type <- factor(data_long$causal_rating_type, levels = c("rating_prior", "rating_posterior"),
+                                labels = c("Prior", "Posterior"))
+```
+
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(Hmisc)  # for mean_cl_boot
+
+# ---- Setup Colors ----
+prior_level_colors <- c(
+  "suggests S0" = "#7570b3", 
+  "suggests S1" = "#d95f02"
+)
+
+plotDV_consistent <- function(df, dv_col, x_jitter = 0.12, y_jitter = 4) {
+  
+  # --- METHOD 2: PRE-CALCULATE MATCHED JITTER COORDINATES ---
+  df_jittered <- df %>%
+    mutate(x_numeric = as.numeric(as.factor(causal_rating_type))) %>%
+    # Group by subject and all active conditions to lock line shifts together on the X-axis
+    group_by(subj_code, prior_level, contingency, prior_type) %>%
+    mutate(
+      x_shift = runif(1, -x_jitter, x_jitter)
+    ) %>%
+    ungroup() %>%
+    # Group by individual rows to create matching Y-shifts for both lines and points
+    rowwise() %>%
+    mutate(
+      y_shift = runif(1, -y_jitter, y_jitter),
+      x_jittered = x_numeric + x_shift,
+      y_jittered = .data[[dv_col]] + y_shift
+    ) %>%
+    ungroup()
+
+  # Extract original factor levels for labeling the X-axis
+  x_labels <- levels(as.factor(df$causal_rating_type))
+  
+  # --- BUILD PLOT WITH ALIGNED JITTER ---
+  ggplot(df_jittered, aes(x = x_jittered, y = y_jittered, 
+                          fill = prior_level, color = prior_level)) +
+    
+    # Setting as.table = FALSE swaps the row order (plotting from bottom-up)
+    facet_grid(prior_level ~ contingency + prior_type, as.table = FALSE) + 
+    
+    # Map text labels back onto the continuous baseline positions
+    scale_x_continuous(breaks = seq_along(x_labels), labels = x_labels) +
+    scale_y_continuous(limits = c(-5, 105), breaks = seq(0, 100, by = 25)) +
+    scale_fill_manual(values = prior_level_colors) +
+    scale_color_manual(values = prior_level_colors) +
+    
+    geom_hline(yintercept = 50, color = "grey30", linewidth = 0.5, linetype = "dotted") +
+    
+    # Background Distributions (Using true un-jittered variables)
+    geom_violin(aes(x = as.numeric(as.factor(causal_rating_type)), y = .data[[dv_col]], group = causal_rating_type), 
+                trim = TRUE, alpha = 0.45, color = NA) +
+    
+    # Individual Subject Trajectories
+    geom_line(
+      aes(group = subj_code),
+      alpha = 0.15,
+      color = "grey50"
+    ) +
+    
+    # Raw Data Points
+    geom_point(
+      alpha = 0.12,
+      size = 1,
+      color = "black"
+    ) +
+    
+    # Medians (Using true un-jittered variables to keep them centered and accurate)
+    stat_summary(
+      aes(x = as.numeric(as.factor(causal_rating_type)), y = .data[[dv_col]]),
+      fun = median,              
+      geom = "point",          
+      shape = 21,              
+      color = "black",         
+      size = 2.5,              
+      stroke = 1.0, 
+      fill = "white"
+    ) +
+    
+    labs(
+      x = "Rating Phase",
+      y = "Structure Rating (0–100)", 
+      fill = "Prior Information", 
+      color = "Prior Information"
+    ) +
+    
+    theme_classic(base_size = 12) +
+    theme(
+      legend.title = element_text(face = "bold"),
+      legend.position = "bottom", 
+      axis.text.x = element_text(size = 10),
+      axis.line = element_line(linewidth = 0.5),
+      panel.spacing = unit(1.2, "lines"),
+      strip.background = element_blank(),
+      strip.text.x = element_text(face = "bold", size = 12),
+      strip.text.y = element_blank(),                       
+      plot.margin = margin(10, 15, 10, 10)
+    )
+}
+
+# ---- Run and Save ----
+p_participants <- plotDV_consistent(data_long, "rating_value")
+p_participants
+
+if(!dir.exists("Figures")) dir.create("Figures")
+ggsave("Figures/Participants_Sub.svg", plot = p_participants, width = 8, height = 6, device = "svg")
+```
+
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(Hmisc)  # for mean_cl_boot
+
+
+# ---- Setup Colors ----
+prior_level_colors <- c(
+  "suggests S0" = "#7570b3", 
+  "suggests S1" = "#d95f02"
+)
+
+# ---- Plotting Function: Publication Consistent (Prior vs. Posterior) ----
+plotDV_consistent <- function(df, dv_col, x_jitter = 0.12, y_jitter = 4) {
+  
+  ggplot(df, aes(x = causal_rating_type, y = .data[[dv_col]], 
+                 fill = prior_level, color = prior_level)) +
+    
+    # Facet grid with explicit labels for the Mechanism rows
+    facet_grid(
+       ~ contingency+prior_type, 
+    ) + 
+    
+    # Scale and Aesthetics
+    scale_y_continuous(limits = c(-5, 105), breaks = seq(0, 100, by = 25)) +
+    scale_fill_manual(values = prior_level_colors) +
+    scale_color_manual(values = prior_level_colors) +
+    
+    # Reference line at chance/neutrality
+    geom_hline(yintercept = 50, color = "grey30", linewidth = 0.5, linetype = "dotted") +
+    
+    # 4. Bootstrapped 95% CI Ribbons
+    stat_summary(
+      aes(group = prior_level),
+      fun.data = mean_cl_boot,
+      geom = "ribbon",
+      alpha = 0.4,
+      color = NA
+    ) +
+    
+    # 5. Mean Trajectory Line
+    stat_summary(
+      aes(group = prior_level),
+      fun = mean,
+      geom = "line",
+      linewidth = 1 # Slightly thicker for emphasis
+    ) +
+    
+# 6. Mean Point (Simple point instead of pointrange)
+    stat_summary(
+      fun = mean,              # Just calculate the mean
+      geom = "point",          # Use a simple point geom
+      shape = 21,              # Fillable circle
+      color = "black",         # Outline color
+      size = 2.5,              # Size of the point
+      stroke = 1.0             # Thickness of the outline
+    ) +
+    
+    # Labels
+    labs(
+      x = "Rating Phase",
+      y = "Structure Rating (0–100)", 
+      fill = "Prior Information", 
+      color = "Prior Information"
+    ) +
+    
+    # Consistent Publication Theme
+    theme_classic(base_size = 12) +
+    theme(
+      legend.title = element_text(face = "bold"),
+      legend.position = "bottom", 
+      axis.text.x = element_text(size = 10),
+      axis.line = element_line(linewidth = 0.5),
+      panel.spacing = unit(1.2, "lines"),
+      strip.background = element_blank(),
+      # --- KEY CHANGES HERE ---
+      strip.text.x = element_text(face = "bold", size = 12), # Keep contingency labels
+      strip.text.y = element_blank(),                       # Hide mechanism labels
+      # -------------------------
+      plot.margin = margin(10, 15, 10, 10)
+    )
+}
+
+# ---- Run and Save ----
+p_means <- plotDV_consistent(data_long, "rating_value")
+p_means
+# Save as high-res PDF and PNG
+if(!dir.exists("Figures")) dir.create("Figures")
+
+# also as svg
+ggsave("Figures/Exp4_Means_Sub.svg", plot = p_means, width = 7, height = 4, device = "svg")
+# save also as pdf 
+ggsave("Figures/Exp4_Means_Sub.pdf", plot = p_means, width = 7, height = 4, device = "pdf")
+```
+
+```{r}
+# Install patchwork if you haven't yet
+# install.packages("patchwork")
+library(patchwork)
+
+# Combine the plots
+# / signifies putting p_means below p_participants
+# | signifies putting them side-by-side
+combined_plot <- p_participants | p_means
+
+# Add labels and fine-tune
+final_plot <- combined_plot + 
+  plot_annotation(tag_levels = 'A') & 
+  theme(plot.tag = element_text(face = "bold", size = 16))
+
+# Display the plot
+final_plot
+
+# Save the combined figure
+ggsave("Figures/Exp4_Combined_Figure_Sub.svg", plot = final_plot, width = 12.5, height = 5, device = "svg")
+# save also as pdf 
+ggsave("Figures/Exp4_Combined_Figure_Sub.pdf", plot = final_plot, width = 12.5, height = 5, device = "pdf")
+```
+
+
+# Repeat the statistical analysis with the subset of participants
+
+```{r}
+library(afex)
+library(emmeans)
+
+anova_data <- data_long
+
+a1 <- aov_car(rating_value ~ prior_level*prior_type*causal_rating_type*contingency  + Error(subj_code/causal_rating_type), anova_data, anova_table = list(es = "pes")) # the anova model
+a1 
+```
+
+Repeat analysis as mixed effects model (same results in different format)
+
+```{r}
+library(lme4)
+library(lmerTest)  # gives p-values
+
+# drop the non-realized contingency levels 
+#anova_data <- droplevels(anova_data)
+#with(anova_data, table(device_mechanism, contingency))
+
+model <- lmer(
+  rating_value ~ prior_level * prior_type * causal_rating_type * contingency +
+    (1 | subj_code),
+  data = anova_data
+)
+
+anova(model, type = 3)
+```
+
+

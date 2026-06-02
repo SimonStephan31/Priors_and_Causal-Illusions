@@ -1,0 +1,15 @@
+## Reproducibility Guide
+
+To ensure long-term reproducibility, this project uses `renv` to lock down the exact R package dependencies and versions used in the original analysis.
+
+### Prerequisites
+* **R version:** Recommended 4.4.0 or later.
+* **IDE:** RStudio (recommended for running the Quarto/Markdown document).
+
+### Instructions to Run the Code
+
+1. **Clone or download** this repository to your local machine.
+2. **Open the project** by double-clicking the `.Rproj` file in RStudio. This automatically activates `renv`.
+3. Open your R console and restore the package environment by running:
+   ```R
+   renv::restore()

@@ -1,0 +1,3 @@
+"0","data_excl <- subset(data,  data$desktop_conf != ""1: I confirm"" | data$attent_conf != ""1: I confirm"")"
+"0","data <- subset(data, data$desktop_conf == ""1: I confirm"" & data$attent_conf == ""1: I confirm"")"
+"0",""

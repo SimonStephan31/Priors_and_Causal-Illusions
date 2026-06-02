@@ -1,0 +1,2 @@
+"0","library(readr)"
+"0","data <- read_csv(""data.csv"")"

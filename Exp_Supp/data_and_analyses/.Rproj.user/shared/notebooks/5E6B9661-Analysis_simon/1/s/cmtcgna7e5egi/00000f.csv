@@ -1,0 +1,8 @@
+"0","total_N <- nrow(data) + nrow(data_learning_exclusion)"
+"0","# percentage excluded"
+"0","excl_percentage <- (nrow(data_learning_exclusion) / total_N) * 100"
+"0","excl_percentage"
+"1","[1]"
+"1"," 7.335907"
+"1","
+"

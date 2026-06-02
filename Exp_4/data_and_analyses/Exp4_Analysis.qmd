@@ -1,0 +1,279 @@
+---
+title: "Analysis"
+format: html
+---
+
+```{r setup, include=FALSE}
+# -------------------------------------------------------------------------
+# GLOBAL SETUP & CORE REPRODUCIBILITY CONFIGURATION
+# -------------------------------------------------------------------------
+# Standard Tidyverse Stack
+library(tidyverse)   # Clean attachment of dplyr, ggplot2, readr, tidyr, etc.
+library(data.table)
+
+# Modeling & Advanced Statistics
+library(afex)
+library(emmeans)
+library(lme4)
+library(lmerTest)
+
+# Plotting Utilities & Specialized Stats
+library(patchwork)
+library(Hmisc)       # Required for mean_cl_boot
+
+# Legacy/Reshaping & Descriptive Utilities 
+library(reshape)
+library(reshape2)
+library(pastecs)
+library(ez)
+
+# Global Seed Configuration
+set.seed(42)
+```
+
+
+```{r}
+set.seed(42)
+
+#Get and prepare raw data
+ 
+# Read in raw participant data (Assumes local "data.csv")
+data <- read_csv("data.csv")
+ 
+# Exclusion based on confirmation prompts
+data_excl <- subset(data, data$desktop_conf != "1: I confirm" | data$attent_conf != "1: I confirm")
+data <- subset(data, data$desktop_conf == "1: I confirm" & data$attent_conf == "1: I confirm")
+
+# Exclude participants whose learning accuracy is less than 0.75 (6/8)
+data_learning_exclusion <- data %>%
+  filter(learning_yellow_accuracy < 6/8 | learning_pink_accuracy < 6/8)
+
+data <- data %>%
+  filter(learning_yellow_accuracy >= 6/8 & learning_pink_accuracy >= 6/8)
+
+# Calculate exclusion statistics
+total_N <- nrow(data) + nrow(data_learning_exclusion)
+excl_percentage <- (nrow(data_learning_exclusion) / total_N) * 100
+message("Excluding ", round(excl_percentage, 2), "% of participants based on learning accuracy.")
+ 
+table(data$prior_level, data$contingency, data$prior_type)
+table(data$condition)
+
+
+#Demographics
+ 
+data$age <- as.numeric(data$age)
+mean(data$age, na.rm = TRUE)
+range(data$age, na.rm = TRUE)
+table(data$gender)
+
+
+#Data preparation
+ 
+data$contingency <- factor(data$contingency, 
+                           levels = c("1_1", "05_05"), 
+                           labels = c("P(e+|c+) = 4/4 \nP(e+|c-) = 4/4",
+                                      "P(e+|c+) = 2/4 \nP(e+|c-) = 2/4"))
+
+data$prior_level <- factor(data$prior_level, 
+                           levels = c("informative_S0", "informative_S1"), 
+                           labels = c("suggests S0", "suggests S1"))
+
+data$prior_type <- factor(data$prior_type, 
+                           levels = c("mechanism", "statistical"), 
+                           labels = c("mechanistic", "statistical"))
+# Analysis (Full Sample)
+# Plots
+ 
+# Create long-format dataset for plotting prior and posterior structure ratings together
+data_long <- data %>%
+  pivot_longer(cols = c(rating_prior, rating_posterior),
+               names_to = "causal_rating_type",
+               values_to = "rating_value")
+
+data_long$causal_rating_type <- factor(data_long$causal_rating_type, 
+                                       levels = c("rating_prior", "rating_posterior"),
+                                       labels = c("Prior", "Posterior"))
+ 
+# ---- Setup Colors ----
+prior_level_colors <- c(
+  "suggests S0" = "#7570b3", 
+  "suggests S1" = "#d95f02"
+)
+
+plotDV_consistent <- function(df, dv_col, x_jitter = 0.12, y_jitter = 4) {
+  
+  # Lock trajectory coordinates by pre-calculating jitter shifts
+  df_jittered <- df %>%
+    mutate(x_numeric = as.numeric(as.factor(causal_rating_type))) %>%
+    group_by(subj_code, prior_level, contingency, prior_type) %>%
+    mutate(x_shift = runif(1, -x_jitter, x_jitter)) %>%
+    ungroup() %>%
+    rowwise() %>%
+    mutate(
+      y_shift = runif(1, -y_jitter, y_jitter),
+      x_jittered = x_numeric + x_shift,
+      y_jittered = .data[[dv_col]] + y_shift
+    ) %>%
+    ungroup()
+
+  x_labels <- levels(as.factor(df$causal_rating_type))
+  
+  ggplot(df_jittered, aes(x = x_jittered, y = y_jittered, fill = prior_level, color = prior_level)) +
+    facet_grid(prior_level ~ contingency + prior_type, as.table = FALSE) + 
+    scale_x_continuous(breaks = seq_along(x_labels), labels = x_labels) +
+    scale_y_continuous(limits = c(-5, 105), breaks = seq(0, 100, by = 25)) +
+    scale_fill_manual(values = prior_level_colors) +
+    scale_color_manual(values = prior_level_colors) +
+    geom_hline(yintercept = 50, color = "grey30", linewidth = 0.5, linetype = "dotted") +
+    geom_violin(aes(x = as.numeric(as.factor(causal_rating_type)), y = .data[[dv_col]], group = causal_rating_type), 
+                trim = TRUE, alpha = 0.45, color = NA) +
+    geom_line(aes(group = subj_code), alpha = 0.15, color = "grey50") +
+    geom_point(alpha = 0.12, size = 1, color = "black") +
+    stat_summary(
+      aes(x = as.numeric(as.factor(causal_rating_type)), y = .data[[dv_col]]),
+      fun = median,              
+      geom = "point",          
+      shape = 21,              
+      color = "black",         
+      size = 2.5,              
+      stroke = 1.0, 
+      fill = "white"
+    ) +
+    labs(x = "Rating Phase", y = "Structure Rating (0–100)", fill = "Prior Information", color = "Prior Information") +
+    theme_classic(base_size = 12) +
+    theme(
+      legend.title = element_text(face = "bold"),
+      legend.position = "bottom", 
+      axis.text.x = element_text(size = 10),
+      axis.line = element_line(linewidth = 0.5),
+      panel.spacing = unit(1.2, "lines"),
+      strip.background = element_blank(),
+      strip.text.x = element_text(face = "bold", size = 12),
+      strip.text.y = element_blank(),                       
+      plot.margin = margin(10, 15, 10, 10)
+    )
+}
+
+p_participants <- plotDV_consistent(data_long, "rating_value")
+
+if(!dir.exists("Figures")) dir.create("Figures")
+ggsave("Figures/Participants.svg", plot = p_participants, width = 8, height = 6, device = "svg")
+ 
+plotDV_means <- function(df, dv_col) {
+  ggplot(df, aes(x = causal_rating_type, y = .data[[dv_col]], fill = prior_level, color = prior_level)) +
+    facet_grid(~ contingency + prior_type) + 
+    scale_y_continuous(limits = c(-5, 105), breaks = seq(0, 100, by = 25)) +
+    scale_fill_manual(values = prior_level_colors) +
+    scale_color_manual(values = prior_level_colors) +
+    geom_hline(yintercept = 50, color = "grey30", linewidth = 0.5, linetype = "dotted") +
+    stat_summary(aes(group = prior_level), fun.data = mean_cl_boot, geom = "ribbon", alpha = 0.4, color = NA) +
+    stat_summary(aes(group = prior_level), fun = mean, geom = "line", linewidth = 1) +
+    stat_summary(fun = mean, geom = "point", shape = 21, color = "black", size = 2.5, stroke = 1.0) +
+    labs(x = "Rating Phase", y = "Structure Rating (0–100)", fill = "Prior Information", color = "Prior Information") +
+    theme_classic(base_size = 12) +
+    theme(
+      legend.title = element_text(face = "bold"),
+      legend.position = "bottom", 
+      axis.text.x = element_text(size = 10),
+      axis.line = element_line(linewidth = 0.5),
+      panel.spacing = unit(1.2, "lines"),
+      strip.background = element_blank(),
+      strip.text.x = element_text(face = "bold", size = 12), 
+      strip.text.y = element_blank(),                       
+      plot.margin = margin(10, 15, 10, 10)
+    )
+}
+
+p_means <- plotDV_means(data_long, "rating_value")
+ggsave("Figures/Exp4_Means.svg", plot = p_means, width = 7, height = 4, device = "svg")
+ggsave("Figures/Exp4_Means.pdf", plot = p_means, width = 7, height = 4, device = "pdf")
+ 
+combined_plot <- p_participants | p_means
+final_plot <- combined_plot + 
+  plot_annotation(tag_levels = 'A') & 
+  theme(plot.tag = element_text(face = "bold", size = 16))
+
+ggsave("Figures/Exp4_Combined_Figure.svg", plot = final_plot, width = 12.5, height = 5, device = "svg")
+ggsave("Figures/Exp4_Combined_Figure.pdf", plot = final_plot, width = 12.5, height = 5, device = "pdf")
+
+combined_plot
+
+medians <- data_long %>%
+  group_by(prior_level, prior_type, contingency, causal_rating_type) %>%
+  summarise(median_rating = median(rating_value), .groups = "drop")
+
+print(medians)
+
+#Statistical tests (Full Sample)
+ 
+anova_data <- data_long
+a1 <- aov_car(rating_value ~ prior_level * prior_type * causal_rating_type * contingency  + Error(subj_code/causal_rating_type), anova_data, anova_table = list(es = "pes"))
+print(a1) 
+ 
+model <- lmer(rating_value ~ prior_level * prior_type * causal_rating_type * contingency + (1 | subj_code), data = anova_data)
+anova(model, type = 3)
+ 
+group_means <- emmeans(a1, c("causal_rating_type", "prior_level", "prior_type", "contingency")) 
+print(group_means)
+
+pairs(emmeans(a1, ~ prior_level), adjust = "none")
+pairs(emmeans(a1, ~ causal_rating_type), adjust = "none")
+pairs(emmeans(a1, ~ causal_rating_type|prior_level), adjust = "none")
+
+deltas <- pairs(emmeans(a1, ~ causal_rating_type|contingency*prior_level), adjust = "none")
+print(deltas)
+```
+
+
+```{r}
+#Subset Analysis
+#Now we evaluate compliance subsets: in the conditions suggesting S1, we retain participants with prior values of at least 70; in conditions suggesting S0, we retain participants with prior values no higher than 30.
+
+ 
+data_sub <- data %>%
+  filter(
+    (prior_level == "suggests S0" & rating_prior <= 30) |
+    (prior_level == "suggests S1" & rating_prior >= 70)
+  )
+
+
+#Plots (Subset)
+ 
+data_long_sub <- data_sub %>%
+  pivot_longer(cols = c(rating_prior, rating_posterior),
+               names_to = "causal_rating_type",
+               values_to = "rating_value")
+
+data_long_sub$causal_rating_type <- factor(data_long_sub$causal_rating_type, 
+                                           levels = c("rating_prior", "rating_posterior"),
+                                           labels = c("Prior", "Posterior"))
+ 
+p_participants_sub <- plotDV_consistent(data_long_sub, "rating_value")
+p_means_sub <- plotDV_means(data_long_sub, "rating_value")
+
+ggsave("Figures/Participants_Sub.svg", plot = p_participants_sub, width = 8, height = 6, device = "svg")
+ggsave("Figures/Exp4_Means_Sub.svg", plot = p_means_sub, width = 7, height = 4, device = "svg")
+ggsave("Figures/Exp4_Means_Sub.pdf", plot = p_means_sub, width = 7, height = 4, device = "pdf")
+
+combined_plot_sub <- p_participants_sub | p_means_sub
+final_plot_sub <- combined_plot_sub + 
+  plot_annotation(tag_levels = 'A') & 
+  theme(plot.tag = element_text(face = "bold", size = 16))
+
+
+combined_plot_sub 
+
+ggsave("Figures/Exp4_Combined_Figure_Sub.svg", plot = final_plot_sub, width = 12.5, height = 5, device = "svg")
+ggsave("Figures/Exp4_Combined_Figure_Sub.pdf", plot = final_plot_sub, width = 12.5, height = 5, device = "pdf")
+
+
+#Statistical Analysis (Subset)
+ 
+anova_data_sub <- data_long_sub
+a1_sub <- aov_car(rating_value ~ prior_level * prior_type * causal_rating_type * contingency  + Error(subj_code/causal_rating_type), anova_data_sub, anova_table = list(es = "pes"))
+print(a1_sub) 
+ 
+model_sub <- lmer(rating_value ~ prior_level * prior_type * causal_rating_type * contingency + (1 | subj_code), data = anova_data_sub)
+anova(model_sub, type = 3)
+```

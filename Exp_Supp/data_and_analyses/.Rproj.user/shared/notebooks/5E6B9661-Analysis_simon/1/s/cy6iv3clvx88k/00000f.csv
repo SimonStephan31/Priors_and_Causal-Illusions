@@ -1,0 +1,6 @@
+"0","data_learning_exclusion <- data %>%"
+"0","  filter(learning_yellow_accuracy < 6/8 | learning_pink_accuracy < 6/8)"
+"0",""
+"0",""
+"0","data <- data %>%"
+"0","  filter(learning_yellow_accuracy >= 6/8 & learning_pink_accuracy >= 6/8)"
